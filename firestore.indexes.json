@@ -29,20 +29,6 @@
       "collectionGroup": "advances",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "date", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "advances",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "date", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "advances",
-      "queryScope": "COLLECTION",
-      "fields": [
         { "fieldPath": "employeeId", "order": "ASCENDING" },
         { "fieldPath": "date",       "order": "ASCENDING" }
       ]
