@@ -7,11 +7,13 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
-    "firebase": "^12.12.0",
-    "lucide-react": "^1.8.0",
+    "dexie": "^4.4.4",
+    "dexie-react-hooks": "^4.4.0",
+    "firebase": "^12.17.1",
+    "lucide-react": "^1.28.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "react-router-dom": "^7.14.0",
+    "react-router-dom": "^7.18.2",
     "react-scripts": "5.0.1",
     "web-vitals": "^2.1.4"
   },
@@ -19,7 +21,9 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "electron:serve": "concurrently -k \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run build && electron-builder"
   },
   "eslintConfig": {
     "extends": [
@@ -38,5 +42,28 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "homepage": "./",
+  "main": "public/electron.js",
+  "build": {
+    "appId": "com.ranisalary.app",
+    "productName": "RANI SALARY",
+    "files": [
+      "build/**/*",
+      "node_modules/**/*"
+    ],
+    "extraMetadata": {
+      "main": "build/electron.js"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^42.5.1",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.0.10"
   }
 }

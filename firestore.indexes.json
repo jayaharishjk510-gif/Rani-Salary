@@ -1,0 +1,52 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "salary_records",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "year",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salary_records",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "dept",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salary_records",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "month",      "order": "ASCENDING" },
+        { "fieldPath": "year",       "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "advances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "advances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "advances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "date",       "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
