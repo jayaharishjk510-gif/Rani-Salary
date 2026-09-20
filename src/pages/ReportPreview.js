@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import SalaryReport from '../SalaryReport';
-import { Printer, Search, RefreshCw } from 'lucide-react';
+import { Printer, Search, RefreshCw, Download } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -10,6 +11,7 @@ const MONTHS = [
 ];
 
 function ReportPreview({ userPermissions }) {
+  const { showToast } = useToast();
   const [records, setRecords] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   
@@ -23,16 +25,42 @@ function ReportPreview({ userPermissions }) {
   const [filterMonth, setFilterMonth] = useState(MONTHS[new Date().getMonth()]);
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
 
-  // Fetch all salary records in real-time
+  // Fetch allowed salary records with optimized query
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "salary_records"), (snapshot) => {
-      setRecords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    return unsub;
-  }, []);
+    if (!userPermissions || !userPermissions.depts) return;
 
-  // Filter records client-side for instant search & feedback
+    // Dynamically build query constraints to prevent unbounded reads
+    const constraints = [
+      where("dept", "in", userPermissions.depts)
+    ];
+
+    if (filterYear !== 'All') {
+      constraints.push(where("year", "==", filterYear));
+    }
+    if (filterMonth !== 'All') {
+      constraints.push(where("month", "==", filterMonth));
+    }
+
+    const q = query(
+      collection(db, "salary_records"),
+      ...constraints
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      setRecords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => {
+      console.error("Firestore query error:", err);
+      showToast("Error loading records: " + err.message, 'error');
+    });
+
+    return unsub;
+  }, [userPermissions, filterYear, filterMonth, showToast]);
+
+  // Filter records client-side for search and shop filtering, excluding soft-deleted records
   const filteredRecords = records.filter(rec => {
+    // Exclude soft-deleted / archived records
+    if (rec.isDeleted) return false;
+
     const matchesName = rec.name?.toLowerCase().includes(searchTerm.toLowerCase());
     
     // Security: Limit data matching to allowed departments
@@ -60,17 +88,81 @@ function ReportPreview({ userPermissions }) {
     );
   };
 
-  // Determine which records to print (selected ones, or all filtered ones if none selected)
-  const recordsToPrint = records.filter(rec => 
-    selectedIds.length > 0 ? selectedIds.includes(rec.id) : filteredRecords.map(r => r.id).includes(rec.id)
-  );
+  // Determine which records to print / export
+  const recordsToPrint = records
+    .filter(rec => !rec.isDeleted)
+    .filter(rec => selectedIds.length > 0 ? selectedIds.includes(rec.id) : filteredRecords.map(r => r.id).includes(rec.id));
 
   const handlePrint = () => {
     if (recordsToPrint.length === 0) {
-      alert("No records to print. Adjust your filters or select records first.");
+      showToast("No records to print. Adjust your filters or select records first.", 'warning');
       return;
     }
     window.print();
+  };
+
+  // Export filtered or selected records to CSV
+  const handleExportCSV = () => {
+    if (recordsToPrint.length === 0) {
+      showToast("No salary records to export. Adjust your filters first.", 'warning');
+      return;
+    }
+
+    const headers = [
+      "Employee Name",
+      "Shop",
+      "Month",
+      "Year",
+      "Days Worked",
+      "Daily Rate",
+      "Fixed Earnings",
+      "Incentive",
+      "L.Bonus",
+      "TS Allowance",
+      "RD Addition",
+      "PF Deduction",
+      "Advance Deduction",
+      "J.Balance",
+      "Penalty",
+      "RD Deduction",
+      "Gross Total",
+      "Net Salary",
+      "Remarks"
+    ];
+
+    const rows = recordsToPrint.map(r => [
+      `"${(r.name || '').replace(/"/g, '""')}"`,
+      `"${(r.dept || '').replace(/"/g, '""')}"`,
+      `"${r.month || ''}"`,
+      `"${r.year || ''}"`,
+      Number(r.days) || 0,
+      Number(r.baseSalary) || 0,
+      Number(r.fixedEarnings) || 0,
+      Number(r.incentive ?? r.insentive ?? 0),
+      Number(r.lBonus) || 0,
+      Number(r.ts) || 0,
+      Number(r.rdAdd) || 0,
+      Number(r.pf) || 0,
+      Number(r.advance) || 0,
+      Number(r.jBalance) || 0,
+      Number(r.penalty) || 0,
+      Number(r.rdDed) || 0,
+      Number(r.gTotal) || 0,
+      Number(r.net ?? r.gTotal ?? 0),
+      `"${(r.remarks || 'GOOD').replace(/"/g, '""')}"`
+    ]);
+
+    const csvString = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Salary_Records_${filterMonth}_${filterYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${recordsToPrint.length} salary records to CSV!`, 'success');
   };
 
   const handleResetFilters = () => {
@@ -92,11 +184,31 @@ function ReportPreview({ userPermissions }) {
     <div>
       {/* SCREEN UI */}
       <div className="no-print">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2>Salary Records</h2>
-          <button onClick={handlePrint} style={printBtn} disabled={recordsToPrint.length === 0}>
-            <Printer size={18} /> Print Slips ({recordsToPrint.length})
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Salary Records</h2>
+            <p style={{ margin: '4px 0 0 0', color: '#666', fontSize: '13px' }}>
+              Filter, search, print salary slips, and export to spreadsheets
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={handleExportCSV}
+              style={exportBtn}
+              disabled={recordsToPrint.length === 0}
+              title="Export visible records to Excel/CSV"
+            >
+              <Download size={18} /> Export CSV ({recordsToPrint.length})
+            </button>
+            <button
+              onClick={handlePrint}
+              style={printBtn}
+              disabled={recordsToPrint.length === 0}
+              title="Print 6-per-sheet slips"
+            >
+              <Printer size={18} /> Print Slips ({recordsToPrint.length})
+            </button>
+          </div>
         </div>
 
         {/* Filter Toolbar */}
@@ -191,7 +303,7 @@ function ReportPreview({ userPermissions }) {
               </tbody>
             </table>
           ) : (
-            <div style={{ textAlign: 'center', padding: '50px', color: '#555' }}>
+            <div style={{ textAlign: 'center', padding: '50px', color: '#666' }}>
               No salary records found matching filters.
             </div>
           )}
@@ -276,15 +388,30 @@ const printBtn = {
   backgroundColor: '#3d85c6',
   color: '#fff',
   border: 'none',
-  padding: '12px 24px',
+  padding: '10px 20px',
   borderRadius: '6px',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
+  gap: '8px',
   fontWeight: 'bold',
   transition: '0.2s opacity',
-  fontSize: '14px'
+  fontSize: '13px'
+};
+
+const exportBtn = {
+  backgroundColor: '#222',
+  color: '#fff',
+  border: '1px solid #333',
+  padding: '10px 18px',
+  borderRadius: '6px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  fontWeight: '600',
+  transition: '0.2s background-color',
+  fontSize: '13px'
 };
 
 const resetBtn = {

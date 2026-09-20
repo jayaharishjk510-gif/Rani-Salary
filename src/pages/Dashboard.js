@@ -16,17 +16,26 @@ function Dashboard({ userPermissions }) {
   useEffect(() => {
     if (!userPermissions || !userPermissions.depts) return;
 
-    // 1. Listen to Employees
-    const unsubEmps = onSnapshot(collection(db, "employees"), (snapshot) => {
+    // 1. Listen to Employees — filtered by department
+    const empQuery = query(
+      collection(db, "employees"),
+      where("dept", "in", userPermissions.depts)
+    );
+    const unsubEmps = onSnapshot(empQuery, (snapshot) => {
       setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 2. Listen to Advances — filtered to current month using date range
+    // 2. Listen to Advances — filtered to current month and department
     const monthIndex = now.getMonth(); // 0-based
-    const startDate = new Date(now.getFullYear(), monthIndex, 1).toISOString().split('T')[0];
-    const endDate = new Date(now.getFullYear(), monthIndex + 1, 0).toISOString().split('T')[0];
+    const yearNum = now.getFullYear();
+    const pad = (num) => String(num).padStart(2, '0');
+    const startDate = `${yearNum}-${pad(monthIndex + 1)}-01`;
+    const lastDay = new Date(yearNum, monthIndex + 1, 0).getDate();
+    const endDate = `${yearNum}-${pad(monthIndex + 1)}-${pad(lastDay)}`;
+
     const advQuery = query(
       collection(db, "advances"),
+      where("dept", "in", userPermissions.depts),
       where("date", ">=", startDate),
       where("date", "<=", endDate)
     );
@@ -34,16 +43,16 @@ function Dashboard({ userPermissions }) {
       setAdvances(snapshot.docs.map(doc => doc.data()));
     });
 
-    // 3. Listen to Salary Records — filtered to current month + year
+    // 3. Listen to Salary Records — filtered to current month, year, and department
     const salQuery = query(
       collection(db, "salary_records"),
+      where("dept", "in", userPermissions.depts),
       where("month", "==", currentMonth),
       where("year", "==", currentYear)
     );
     const unsubSal = onSnapshot(salQuery, (snapshot) => {
-      const sals = snapshot.docs.map(doc => doc.data());
-      const visibleSals = sals.filter(sal => userPermissions.depts.includes(sal.dept));
-      const total = visibleSals.reduce((acc, sal) => acc + (Number(sal.gTotal) || 0), 0);
+      const sals = snapshot.docs.map(doc => doc.data()).filter(sal => !sal.isDeleted);
+      const total = sals.reduce((acc, sal) => acc + (Number(sal.gTotal) || 0), 0);
       setMonthlyPayout(total);
     });
 
@@ -51,14 +60,9 @@ function Dashboard({ userPermissions }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userPermissions]);
 
-  // Apply department filters
-  const visibleEmployees = employees.filter(emp => 
-    userPermissions?.depts?.includes(emp.dept)
-  );
-
-  const visibleAdvances = advances.filter(adv => 
-    userPermissions?.depts?.includes(adv.dept)
-  );
+  // Apply department filters and exclude soft-deleted records
+  const visibleEmployees = employees.filter(emp => !emp.isDeleted);
+  const visibleAdvances = advances.filter(adv => !adv.isDeleted);
 
   // Calculate totals
   const totalAdvancesSum = visibleAdvances.reduce((acc, adv) => acc + (Number(adv.amount) || 0), 0);
@@ -98,7 +102,7 @@ function Dashboard({ userPermissions }) {
 
       {/* Employee List Table */}
       <div style={tableContainer}>
-        <h3 style={{ marginBottom: '15px', color: '#fff' }}>Employee Shop & Advance Status</h3>
+        <h3 style={{ marginBottom: '15px', color: '#fff' }}>Employee & Advance Status</h3>
         {visibleEmployees.length > 0 ? (
           <table style={tableStyle}>
             <thead>
