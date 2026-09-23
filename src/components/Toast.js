@@ -40,21 +40,21 @@ export const ToastProvider = ({ children }) => {
               ...toastItemStyle,
               borderLeft: `4px solid ${
                 toast.type === 'success'
-                  ? '#4caf50'
+                  ? '#16a34a'
                   : toast.type === 'error'
-                  ? '#ff4d4d'
+                  ? '#ef4444'
                   : toast.type === 'warning'
-                  ? '#ff9800'
-                  : '#3d85c6'
+                  ? '#f59e0b'
+                  : '#2563eb'
               }`
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-              {toast.type === 'success' && <CheckCircle2 size={18} color="#4caf50" />}
-              {toast.type === 'error' && <AlertCircle size={18} color="#ff4d4d" />}
-              {toast.type === 'warning' && <AlertCircle size={18} color="#ff9800" />}
-              {toast.type === 'info' && <Info size={18} color="#3d85c6" />}
-              <span style={{ fontSize: '13px', color: '#fff', fontWeight: '500' }}>
+              {toast.type === 'success' && <CheckCircle2 size={18} color="#16a34a" />}
+              {toast.type === 'error' && <AlertCircle size={18} color="#ef4444" />}
+              {toast.type === 'warning' && <AlertCircle size={18} color="#f59e0b" />}
+              {toast.type === 'info' && <Info size={18} color="#2563eb" />}
+              <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '600' }}>
                 {toast.message}
               </span>
             </div>
@@ -87,12 +87,12 @@ const toastContainerStyle = {
 
 const toastItemStyle = {
   pointerEvents: 'auto',
-  backgroundColor: '#161616',
-  color: '#fff',
+  backgroundColor: '#ffffff',
+  color: '#0f172a',
   padding: '12px 16px',
-  borderRadius: '8px',
-  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
-  border: '1px solid #2a2a2a',
+  borderRadius: '10px',
+  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05)',
+  border: '1px solid #e2e8f0',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -103,7 +103,7 @@ const toastItemStyle = {
 const closeBtnStyle = {
   background: 'none',
   border: 'none',
-  color: '#888',
+  color: '#94a3b8',
   cursor: 'pointer',
   padding: '4px',
   display: 'flex',

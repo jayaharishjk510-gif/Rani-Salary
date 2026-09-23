@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft } from 'lucide-react';
+import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search } from 'lucide-react';
 
 // Import the pages
 import Dashboard from './pages/Dashboard';
@@ -10,6 +10,7 @@ import EmployeeRegistry from './pages/EmployeeRegistry';
 import AdvanceTracker from './pages/AdvanceTracker';
 import SalaryProcessor from './pages/SalaryProcessor';
 import ReportPreview from './pages/ReportPreview';
+import Search360 from './pages/Search360';
 import logoRani from './logo_rani.png';
 import { ToastProvider } from './components/Toast';
 
@@ -46,10 +47,10 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Show nothing while Firebase resolves the auth state
+  // Show clean loading state while Firebase resolves the auth state
   if (authLoading) {
     return (
-      <div style={{ backgroundColor: '#000', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#555' }}>
+      <div style={{ backgroundColor: '#f8fafc', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#64748b', fontSize: '15px', fontWeight: '500' }}>
         Loading…
       </div>
     );
@@ -73,18 +74,18 @@ function App() {
   return (
     <ToastProvider>
       <Router>
-        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#000', color: '#fff' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc', color: '#0f172a' }}>
 
           {/* SIDEBAR MENU */}
           <nav style={{
             ...sidebarStyle,
-            width: collapsed ? '70px' : '250px',
-            transition: 'width 0.3s ease',
+            width: collapsed ? '72px' : '255px',
+            transition: 'width 0.25s ease',
             overflow: 'hidden'
           }}>
             <div style={{
-              padding: '15px 20px',
-              borderBottom: '1px solid #222',
+              padding: '16px 20px',
+              borderBottom: '1px solid #f1f5f9',
               display: 'flex',
               alignItems: 'center',
               justifyContent: collapsed ? 'center' : 'space-between',
@@ -95,7 +96,7 @@ function App() {
               {!collapsed ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden' }}>
-                    <span style={{ fontWeight: 'bold', fontSize: '18px', textTransform: 'uppercase', color: '#fff', letterSpacing: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ fontWeight: '800', fontSize: '17px', textTransform: 'uppercase', color: '#0f172a', letterSpacing: '0.6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {getSidebarTitle()}
                     </span>
                   </div>
@@ -104,14 +105,14 @@ function App() {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#888',
+                      color: '#64748b',
                       cursor: 'pointer',
-                      padding: '5px',
+                      padding: '6px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       transition: '0.2s',
-                      borderRadius: '4px'
+                      borderRadius: '6px'
                     }}
                     title="Collapse Sidebar"
                   >
@@ -124,12 +125,13 @@ function App() {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#888',
+                    color: '#64748b',
                     cursor: 'pointer',
-                    padding: '5px',
+                    padding: '6px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    justifyContent: 'center',
+                    borderRadius: '6px'
                   }}
                   title="Expand Sidebar"
                 >
@@ -138,7 +140,7 @@ function App() {
               )}
             </div>
 
-            <div style={{ ...menuList, padding: collapsed ? '20px 10px' : '20px' }}>
+            <div style={{ ...menuList, padding: collapsed ? '20px 10px' : '20px 16px' }}>
               <NavLink to="/" end style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Dashboard">
                 <LayoutDashboard size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Dashboard</span>}
               </NavLink>
@@ -154,6 +156,9 @@ function App() {
               <NavLink to="/reports" style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Salary Records">
                 <FileText size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Salary Records</span>}
               </NavLink>
+              <NavLink to="/search-360" style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="360 Search">
+                <Search size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>360 Search</span>}
+              </NavLink>
             </div>
             <button
               onClick={() => signOut(auth)}
@@ -161,7 +166,7 @@ function App() {
                 ...logoutBtn,
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 gap: collapsed ? '0' : '10px',
-                padding: collapsed ? '20px 0' : '20px'
+                padding: collapsed ? '20px 0' : '20px 24px'
               }}
               title="Logout"
             >
@@ -170,13 +175,14 @@ function App() {
           </nav>
 
           {/* MAIN CONTENT AREA */}
-          <main style={{ flex: 1, padding: '30px', overflowY: 'auto' }}>
+          <main style={{ flex: 1, padding: '32px', overflowY: 'auto', backgroundColor: '#f8fafc' }}>
             <Routes>
               <Route path="/" element={<Dashboard userPermissions={userPermissions} />} />
               <Route path="/employees" element={<EmployeeRegistry userPermissions={userPermissions} />} />
               <Route path="/advance" element={<AdvanceTracker userPermissions={userPermissions} />} />
               <Route path="/salary" element={<SalaryProcessor userPermissions={userPermissions} />} />
               <Route path="/reports" element={<ReportPreview userPermissions={userPermissions} />} />
+              <Route path="/search-360" element={<Search360 userPermissions={userPermissions} />} />
             </Routes>
           </main>
         </div>
@@ -207,12 +213,12 @@ function LoginScreen() {
   };
 
   return (
-    <div style={{ backgroundColor: '#000', color: '#fff', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-      <form onSubmit={handleLogin} style={{ padding: '40px', border: '1px solid #e0e0e0', borderRadius: '12px', width: '360px', backgroundColor: '#ffffff', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '25px' }}>
-          <img src={logoRani} style={{ width: '220px', height: 'auto', marginBottom: '10px' }} alt="Rani Logo" />
+    <div style={{ backgroundColor: '#f8fafc', background: 'radial-gradient(circle at 50% 30%, #ffffff 0%, #f1f5f9 100%)', color: '#0f172a', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+      <form onSubmit={handleLogin} style={{ padding: '40px', border: '1px solid #e2e8f0', borderRadius: '16px', width: '380px', backgroundColor: '#ffffff', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '28px' }}>
+          <img src={logoRani} style={{ width: '220px', height: 'auto', marginBottom: '12px' }} alt="Rani Logo" />
         </div>
-        {error && <div style={{ color: '#d32f2f', fontSize: '13px', marginBottom: '12px', textAlign: 'center', fontWeight: '500' }}>{error}</div>}
+        {error && <div style={{ color: '#ef4444', fontSize: '13px', marginBottom: '14px', textAlign: 'center', fontWeight: '600' }}>{error}</div>}
         <input
           type="email"
           placeholder="Email Address"
@@ -236,13 +242,13 @@ function LoginScreen() {
 }
 
 // Styles
-const sidebarStyle = { backgroundColor: '#0a0a0a', borderRight: '1px solid #222', display: 'flex', flexDirection: 'column' };
-const menuList = { display: 'flex', flexDirection: 'column', gap: '5px', padding: '20px', flex: 1 };
-const navLink = { color: '#888', textDecoration: 'none', padding: '12px', borderRadius: '5px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', transition: '0.3s' };
-const navLinkActive = { color: '#fff', backgroundColor: '#1a1a1a', borderLeft: '3px solid #4caf50', paddingLeft: '9px' };
-const logoutBtn = { padding: '20px', border: 'none', background: 'none', color: '#ff4d4d', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', borderTop: '1px solid #222' };
+const sidebarStyle = { backgroundColor: '#ffffff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', boxShadow: '2px 0 8px rgba(0, 0, 0, 0.02)' };
+const menuList = { display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 };
+const navLink = { color: '#64748b', textDecoration: 'none', padding: '10px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', fontWeight: '500', transition: 'all 0.2s ease' };
+const navLinkActive = { color: '#15803d', backgroundColor: '#f0fdf4', fontWeight: '600', borderLeft: '3px solid #16a34a', paddingLeft: '11px' };
+const logoutBtn = { border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', borderTop: '1px solid #f1f5f9', fontSize: '14px', fontWeight: '600', transition: '0.2s' };
 
-const loginInputStyle = { width: '100%', padding: '12px', marginBottom: '15px', backgroundColor: '#f9f9f9', border: '1px solid #ccc', color: '#000', borderRadius: '6px', boxSizing: 'border-box' };
-const loginBtnStyle = { width: '100%', padding: '12px', backgroundColor: '#000', color: '#fff', border: 'none', fontWeight: 'bold', borderRadius: '6px' };
+const loginInputStyle = { width: '100%', padding: '12px 14px', marginBottom: '16px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
+const loginBtnStyle = { width: '100%', padding: '13px', backgroundColor: '#0f172a', color: '#fff', border: 'none', fontWeight: '700', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', transition: 'background-color 0.2s', boxShadow: '0 4px 6px -1px rgba(15, 23, 42, 0.15)' };
 
 export default App;

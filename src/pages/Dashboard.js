@@ -22,7 +22,16 @@ function Dashboard({ userPermissions }) {
       where("dept", "in", userPermissions.depts)
     );
     const unsubEmps = onSnapshot(empQuery, (snapshot) => {
-      setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      list.sort((a, b) => {
+        if (a.employeeId && b.employeeId) {
+          return a.employeeId.localeCompare(b.employeeId, undefined, { numeric: true });
+        }
+        if (a.employeeId) return -1;
+        if (b.employeeId) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      setEmployees(list);
     });
 
     // 2. Listen to Advances — filtered to current month and department
@@ -76,61 +85,81 @@ function Dashboard({ userPermissions }) {
 
   return (
     <div>
-      <h2 style={{ marginBottom: '10px' }}>Overview</h2>
-      <p style={{ color: '#555', fontSize: '13px', marginBottom: '30px' }}>Showing data for {currentMonth} {currentYear}</p>
+      <h2 style={{ marginBottom: '6px', color: '#0f172a', fontWeight: '800', fontSize: '24px' }}>Overview</h2>
+      <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '28px' }}>Showing data for {currentMonth} {currentYear}</p>
 
       {/* Metric Cards */}
       <div style={gridStyle}>
         <div style={cardStyle}>
-          <Users size={24} color="#3d85c6" />
-          <div style={labelStyle}>Total Employees</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={labelStyle}>Total Employees</span>
+            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: '#eff6ff' }}>
+              <Users size={20} color="#2563eb" />
+            </div>
+          </div>
           <div style={valStyle}>{visibleEmployees.length}</div>
         </div>
 
         <div style={cardStyle}>
-          <TrendingUp size={24} color="#ff6b6b" />
-          <div style={labelStyle}>Total Advance ({currentMonth})</div>
-          <div style={valStyle}>₹{totalAdvancesSum}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={labelStyle}>Total Advance ({currentMonth})</span>
+            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: '#fef2f2' }}>
+              <TrendingUp size={20} color="#ef4444" />
+            </div>
+          </div>
+          <div style={valStyle}>₹{totalAdvancesSum.toLocaleString()}</div>
         </div>
 
         <div style={cardStyle}>
-          <Landmark size={24} color="#4caf50" />
-          <div style={labelStyle}>Total Monthly Salary ({currentMonth})</div>
-          <div style={valStyle}>₹{monthlyPayout}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={labelStyle}>Total Monthly Salary ({currentMonth})</span>
+            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: '#f0fdf4' }}>
+              <Landmark size={20} color="#16a34a" />
+            </div>
+          </div>
+          <div style={valStyle}>₹{monthlyPayout.toLocaleString()}</div>
         </div>
       </div>
 
       {/* Employee List Table */}
       <div style={tableContainer}>
-        <h3 style={{ marginBottom: '15px', color: '#fff' }}>Employee & Advance Status</h3>
+        <h3 style={{ margin: '0 0 16px 0', color: '#0f172a', fontSize: '16px', fontWeight: '700' }}>Employee & Advance Status</h3>
         {visibleEmployees.length > 0 ? (
-          <table style={tableStyle}>
-            <thead>
-              <tr style={headerRow}>
-                <th style={thStyle}>NAME</th>
-                <th style={thStyle}>SHOP</th>
-                <th style={thStyle}>DAILY RATE</th>
-                <th style={thStyle}>MONTHLY ADVANCE ({currentMonth})</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleEmployees.map(emp => {
-                const advAmount = getEmployeeAdvances(emp.id);
-                return (
-                  <tr key={emp.id} style={trStyle}>
-                    <td style={{ ...tdStyle, fontWeight: 'bold', color: '#fff' }}>{emp.name}</td>
-                    <td style={tdStyle}>{emp.dept}</td>
-                    <td style={tdStyle}>₹{emp.baseSalary}/day</td>
-                    <td style={{ ...tdStyle, color: advAmount > 0 ? '#ff6b6b' : '#666', fontWeight: advAmount > 0 ? 'bold' : 'normal' }}>
-                      {advAmount > 0 ? `₹${advAmount}` : '₹0'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRow}>
+                  <th style={thStyle}>EMP ID</th>
+                  <th style={thStyle}>NAME</th>
+                  <th style={thStyle}>SHOP</th>
+                  <th style={thStyle}>RATE / SALARY</th>
+                  <th style={thStyle}>MONTHLY ADVANCE ({currentMonth})</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleEmployees.map(emp => {
+                  const advAmount = getEmployeeAdvances(emp.id);
+                  return (
+                    <tr key={emp.id} style={trStyle}>
+                      <td style={{ ...tdStyle, color: '#2563eb', fontFamily: 'monospace', fontWeight: '600' }}>
+                        {emp.employeeId || '—'}
+                      </td>
+                      <td style={{ ...tdStyle, fontWeight: '600', color: '#0f172a' }}>{emp.name}</td>
+                      <td style={tdStyle}>{emp.dept}</td>
+                      <td style={tdStyle}>
+                        ₹{emp.baseSalary}{emp.salaryType === 'monthly' ? '/mo' : '/day'}
+                      </td>
+                      <td style={{ ...tdStyle, color: advAmount > 0 ? '#ef4444' : '#94a3b8', fontWeight: advAmount > 0 ? '700' : 'normal' }}>
+                        {advAmount > 0 ? `₹${advAmount.toLocaleString()}` : '₹0'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <div style={{ textAlign: 'center', padding: '30px', color: '#555' }}>
+          <div style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
             No employees found in your permitted shops.
           </div>
         )}
@@ -141,15 +170,15 @@ function Dashboard({ userPermissions }) {
 
 // Styles
 const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' };
-const cardStyle = { backgroundColor: '#111', padding: '25px', borderRadius: '15px', border: '1px solid #222', display: 'flex', flexDirection: 'column', gap: '10px' };
-const labelStyle = { fontSize: '14px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' };
-const valStyle = { fontSize: '32px', fontWeight: 'bold', color: '#fff' };
+const cardStyle = { backgroundColor: '#ffffff', padding: '22px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const labelStyle = { fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: '600' };
+const valStyle = { fontSize: '30px', fontWeight: '800', color: '#0f172a' };
 
-const tableContainer = { backgroundColor: '#0a0a0a', padding: '20px', borderRadius: '12px', border: '1px solid #222', marginTop: '30px' };
+const tableContainer = { backgroundColor: '#ffffff', padding: '22px', borderRadius: '14px', border: '1px solid #e2e8f0', marginTop: '28px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
 const tableStyle = { width: '100%', borderCollapse: 'collapse', textAlign: 'left' };
-const headerRow = { borderBottom: '1px solid #333' };
-const thStyle = { padding: '12px 15px', color: '#555', fontSize: '12px', textTransform: 'uppercase' };
-const trStyle = { borderBottom: '1px solid #111' };
-const tdStyle = { padding: '14px 15px', fontSize: '13px', color: '#ccc' };
+const headerRow = { borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' };
+const thStyle = { padding: '12px 16px', color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' };
+const trStyle = { borderBottom: '1px solid #f1f5f9' };
+const tdStyle = { padding: '14px 16px', fontSize: '13px', color: '#334155' };
 
 export default Dashboard;

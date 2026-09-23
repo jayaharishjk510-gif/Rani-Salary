@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, addDoc, doc, updateDoc, query, where } from 'firebase/firestore';
-import { UserPlus, Phone, MapPin, Camera, Edit2, Archive, RotateCcw, Users, UserX } from 'lucide-react';
+import { UserPlus, Phone, MapPin, Camera, Edit2, Archive, RotateCcw, Users, UserX, Search } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
 
@@ -16,6 +16,7 @@ const showNotification = (title, body) => {
 function EmployeeRegistry({ userPermissions }) {
   const { showToast } = useToast();
   const [employees, setEmployees] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState(null); // NULL = Add mode, ID = Edit mode
   const [viewArchived, setViewArchived] = useState(false);
@@ -27,11 +28,13 @@ function EmployeeRegistry({ userPermissions }) {
   const isAdmin = userPermissions?.depts?.length > 1;
 
   const getInitialFormData = () => ({
+    employeeId: '',
     name: '',
     phone: '',
     address: '',
     photoUrl: '',
     baseSalary: '',
+    salaryType: 'daily',
     dept: defaultDept
   });
 
@@ -99,7 +102,16 @@ function EmployeeRegistry({ userPermissions }) {
     const unsub = onSnapshot(
       q,
       (snapshot) => {
-        setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        list.sort((a, b) => {
+          if (a.employeeId && b.employeeId) {
+            return a.employeeId.localeCompare(b.employeeId, undefined, { numeric: true });
+          }
+          if (a.employeeId) return -1;
+          if (b.employeeId) return 1;
+          return (a.name || '').localeCompare(b.name || '');
+        });
+        setEmployees(list);
       },
       (error) => {
         console.error("Firestore read error:", error.message);
@@ -112,11 +124,13 @@ function EmployeeRegistry({ userPermissions }) {
   // Open modal in EDIT mode
   const startEdit = (emp) => {
     setFormData({
+      employeeId: emp.employeeId || '',
       name: emp.name,
       phone: emp.phone || '',
       address: emp.address || '',
       photoUrl: emp.photoUrl || '',
       baseSalary: emp.baseSalary,
+      salaryType: emp.salaryType || (Number(emp.baseSalary) > 1500 ? 'monthly' : 'daily'),
       dept: emp.dept
     });
     setEditingId(emp.id);
@@ -130,7 +144,9 @@ function EmployeeRegistry({ userPermissions }) {
     setSaving(true);
     const data = {
       ...formData,
+      employeeId: (formData.employeeId || '').trim(),
       baseSalary: Number(formData.baseSalary) || 0,
+      salaryType: formData.salaryType || 'daily',
       isDeleted: false
     };
     const currentEditingId = editingId;
@@ -188,30 +204,52 @@ function EmployeeRegistry({ userPermissions }) {
     }
   };
 
-  // Separate active vs. archived employees
+  // Separate active vs. archived employees & filter by search term (name, employeeId, phone)
   const activeEmployees = employees.filter(emp => !emp.isDeleted);
   const archivedEmployees = employees.filter(emp => emp.isDeleted === true);
-  const visibleEmployees = viewArchived ? archivedEmployees : activeEmployees;
+  const currentList = viewArchived ? archivedEmployees : activeEmployees;
+  const visibleEmployees = currentList.filter(emp => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase().trim();
+    return (
+      (emp.name && emp.name.toLowerCase().includes(term)) ||
+      (emp.employeeId && emp.employeeId.toLowerCase().includes(term)) ||
+      (emp.phone && emp.phone.toLowerCase().includes(term))
+    );
+  });
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
         <div>
-          <h2 style={{ margin: 0 }}>Employee Management</h2>
-          <p style={{ margin: '5px 0 0 0', color: '#666', fontSize: '13px' }}>
+          <h2 style={{ margin: 0, color: '#0f172a', fontWeight: '800', fontSize: '24px' }}>Employee Management</h2>
+          <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '13px' }}>
             {viewArchived ? `Viewing ${archivedEmployees.length} archived staff` : `Managing ${activeEmployees.length} active staff`}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search Bar */}
+          <div style={searchBoxStyle}>
+            <Search size={15} color="#64748b" />
+            <input
+              type="text"
+              placeholder="Search by ID or name..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={searchInputStyle}
+            />
+          </div>
+
           {/* View toggle for active vs archived */}
           <div style={tabGroupStyle}>
             <button
               onClick={() => setViewArchived(false)}
               style={{
                 ...tabBtnStyle,
-                backgroundColor: !viewArchived ? '#222' : 'transparent',
-                color: !viewArchived ? '#fff' : '#777'
+                backgroundColor: !viewArchived ? '#ffffff' : 'transparent',
+                color: !viewArchived ? '#0f172a' : '#64748b',
+                boxShadow: !viewArchived ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
               }}
             >
               <Users size={14} /> Active ({activeEmployees.length})
@@ -220,8 +258,9 @@ function EmployeeRegistry({ userPermissions }) {
               onClick={() => setViewArchived(true)}
               style={{
                 ...tabBtnStyle,
-                backgroundColor: viewArchived ? '#222' : 'transparent',
-                color: viewArchived ? '#fff' : '#777'
+                backgroundColor: viewArchived ? '#ffffff' : 'transparent',
+                color: viewArchived ? '#0f172a' : '#64748b',
+                boxShadow: viewArchived ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
               }}
             >
               <UserX size={14} /> Archive ({archivedEmployees.length})
@@ -238,10 +277,10 @@ function EmployeeRegistry({ userPermissions }) {
         {visibleEmployees.map(emp => (
           <div key={emp.id} style={{
             ...cardStyle,
-            borderColor: emp.isDeleted ? '#332222' : '#222',
+            borderColor: emp.isDeleted ? '#fecaca' : '#e2e8f0',
             opacity: emp.isDeleted ? 0.85 : 1
           }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               {!emp.isDeleted ? (
                 <>
                   <button
@@ -249,7 +288,7 @@ function EmployeeRegistry({ userPermissions }) {
                     style={iconBtnStyle}
                     title="Edit Details"
                   >
-                    <Edit2 size={16} color="#3d85c6" />
+                    <Edit2 size={16} color="#2563eb" />
                   </button>
                   <button
                     onClick={() => setConfirmModal({
@@ -261,30 +300,38 @@ function EmployeeRegistry({ userPermissions }) {
                     style={iconBtnStyle}
                     title="Archive Employee (Safe)"
                   >
-                    <Archive size={16} color="#ff8533" />
+                    <Archive size={16} color="#ea580c" />
                   </button>
                 </>
               ) : (
                 <button
                   onClick={() => handleRestoreEmployee(emp)}
-                  style={{ ...iconBtnStyle, color: '#4caf50', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold' }}
+                  style={{ ...iconBtnStyle, color: '#16a34a', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold' }}
                   title="Restore Employee"
                 >
-                  <RotateCcw size={14} color="#4caf50" /> Restore
+                  <RotateCcw size={14} color="#16a34a" /> Restore
                 </button>
               )}
             </div>
 
             <div style={photoCircle}>
-              {emp.photoUrl ? <img src={emp.photoUrl} style={imgStyle} alt="Profile" onError={e => { e.target.style.display = 'none'; }} /> : <Camera color="#444" />}
+              {emp.photoUrl ? <img src={emp.photoUrl} style={imgStyle} alt="Profile" onError={e => { e.target.style.display = 'none'; }} /> : <Camera color="#94a3b8" />}
             </div>
-            <h3 style={{ margin: '10px 0 5px 0' }}>{emp.name}</h3>
+            <h3 style={{ margin: '12px 0 4px 0', color: '#0f172a', fontWeight: '700', fontSize: '16px' }}>{emp.name}</h3>
+            {emp.employeeId ? (
+              <div style={empIdBadgeStyle}>ID: {emp.employeeId}</div>
+            ) : (
+              <div style={{ height: '22px' }}></div>
+            )}
             <p style={deptTag}>{emp.dept}</p>
 
             <div style={infoRow}><Phone size={14}/> {emp.phone || 'No Phone'}</div>
             <div style={infoRow}><MapPin size={14}/> {emp.address || 'No Address'}</div>
-            <div style={salaryTag}>Daily Rate: ₹{emp.baseSalary}/day</div>
-
+            <div style={salaryTag}>
+              {emp.salaryType === 'monthly'
+                ? `Monthly Salary: ₹${emp.baseSalary}/mo`
+                : `Daily Rate: ₹${emp.baseSalary}/day`}
+            </div>
             {emp.isDeleted && (
               <div style={archivedBadgeStyle}>
                 ARCHIVED
@@ -296,7 +343,9 @@ function EmployeeRegistry({ userPermissions }) {
 
       {visibleEmployees.length === 0 && (
         <div style={emptyStateStyle}>
-          {viewArchived ? 'No archived employees found.' : 'No active employees in your assigned departments.'}
+          {searchTerm.trim()
+            ? `No employees found matching "${searchTerm}".`
+            : (viewArchived ? 'No archived employees found.' : 'No active employees in your assigned departments.')}
         </div>
       )}
 
@@ -316,21 +365,43 @@ function EmployeeRegistry({ userPermissions }) {
       {showAdd && (
         <div style={modalOverlay}>
           <form onSubmit={handleSave} style={modalContent}>
-            <h3>{editingId ? "Edit Employee" : "Add New Employee"}</h3>
+            <h3 style={{ margin: '0 0 10px 0', color: '#0f172a', fontWeight: '700', fontSize: '18px' }}>{editingId ? "Edit Employee" : "Add New Employee"}</h3>
 
-            <input placeholder="Full Name" required value={formData.name} style={inputStyle} onChange={e => setFormData({...formData, name: e.target.value})} />
-            <input placeholder="Phone Number" value={formData.phone} style={inputStyle} onChange={e => setFormData({...formData, phone: e.target.value})} />
-            <input placeholder="Address" value={formData.address} style={inputStyle} onChange={e => setFormData({...formData, address: e.target.value})} />
+            <input
+              placeholder="Employee ID (e.g. EMP001)"
+              value={formData.employeeId}
+              style={inputStyle}
+              onChange={e => setFormData({...formData, employeeId: e.target.value})}
+            />
+            <input
+              placeholder="Full Name *"
+              required
+              value={formData.name}
+              style={inputStyle}
+              onChange={e => setFormData({...formData, name: e.target.value})}
+            />
+            <input
+              placeholder="Phone Number"
+              value={formData.phone}
+              style={inputStyle}
+              onChange={e => setFormData({...formData, phone: e.target.value})}
+            />
+            <input
+              placeholder="Address"
+              value={formData.address}
+              style={inputStyle}
+              onChange={e => setFormData({...formData, address: e.target.value})}
+            />
             
             {/* Styled Image Upload */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', backgroundColor: '#000', borderRadius: '6px', border: '1px solid #333' }}>
-              <label style={{ fontSize: '13px', color: '#888', textAlign: 'left' }}>Profile Photo</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <label style={{ fontSize: '13px', color: '#64748b', textAlign: 'left', fontWeight: '500' }}>Profile Photo</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ ...photoCircle, margin: 0, width: '50px', height: '50px' }}>
+                <div style={{ ...photoCircle, margin: 0, width: '50px', height: '50px', backgroundColor: '#ffffff' }}>
                   {formData.photoUrl ? (
                     <img src={formData.photoUrl} style={imgStyle} alt="Preview" onError={e => { e.target.style.display = 'none'; }} />
                   ) : (
-                    <Camera color="#444" size={18} />
+                    <Camera color="#94a3b8" size={18} />
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -356,7 +427,57 @@ function EmployeeRegistry({ userPermissions }) {
               </div>
             </div>
 
-            <input type="number" placeholder="Daily Rate (per day)" required value={formData.baseSalary} style={inputStyle} onChange={e => setFormData({...formData, baseSalary: e.target.value})} />
+            {/* Salary Pay Type Selector: Daily vs Monthly */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left' }}>
+              <label style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Pay Type</label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, salaryType: 'daily' })}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    border: formData.salaryType === 'daily' ? '1px solid #16a34a' : '1px solid #cbd5e1',
+                    backgroundColor: formData.salaryType === 'daily' ? '#f0fdf4' : '#ffffff',
+                    color: formData.salaryType === 'daily' ? '#166534' : '#64748b',
+                    transition: '0.2s'
+                  }}
+                >
+                  Daily (₹/day)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, salaryType: 'monthly' })}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    border: formData.salaryType === 'monthly' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                    backgroundColor: formData.salaryType === 'monthly' ? '#eff6ff' : '#ffffff',
+                    color: formData.salaryType === 'monthly' ? '#1e40af' : '#64748b',
+                    transition: '0.2s'
+                  }}
+                >
+                  Monthly (₹/month)
+                </button>
+              </div>
+            </div>
+
+            <input
+              type="number"
+              placeholder={formData.salaryType === 'monthly' ? "Monthly Salary (₹/month) *" : "Daily Rate (per day) *"}
+              required
+              value={formData.baseSalary}
+              style={inputStyle}
+              onChange={e => setFormData({...formData, baseSalary: e.target.value})}
+            />
 
             {/* Shop dropdown: visible to Admins only. Non-admins default to their shop automatically. */}
             {isAdmin ? (
@@ -367,7 +488,7 @@ function EmployeeRegistry({ userPermissions }) {
               </select>
             ) : (
               <div style={nonAdminDeptInfo}>
-                Shop: <strong style={{ color: '#fff' }}>{formData.dept}</strong>
+                Shop: <strong style={{ color: '#0f172a' }}>{formData.dept}</strong>
               </div>
             )}
 
@@ -385,26 +506,29 @@ function EmployeeRegistry({ userPermissions }) {
 }
 
 // Styles
-const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px', marginTop: '30px' };
-const cardStyle = { backgroundColor: '#111', border: '1px solid #222', padding: '20px', borderRadius: '12px', textAlign: 'center', position: 'relative' };
-const photoCircle = { width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#000', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid #333' };
+const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px', marginTop: '28px' };
+const cardStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '24px 20px', borderRadius: '14px', textAlign: 'center', position: 'relative', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const photoCircle = { width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#f1f5f9', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid #e2e8f0' };
 const imgStyle = { width: '100%', height: '100%', objectFit: 'cover' };
-const deptTag = { fontSize: '12px', color: '#888', marginBottom: '15px' };
-const infoRow = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', color: '#ccc', marginBottom: '5px' };
-const salaryTag = { marginTop: '10px', fontWeight: 'bold', color: '#4caf50' };
-const addBtnStyle = { backgroundColor: '#fff', color: '#000', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' };
-const modalOverlay = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
-const modalContent = { backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #333', width: '400px', display: 'flex', flexDirection: 'column', gap: '10px' };
-const inputStyle = { padding: '12px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', borderRadius: '6px' };
-const saveBtn = { padding: '12px', backgroundColor: '#fff', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', flex: 1 };
-const cancelBtn = { padding: '12px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', flex: 1 };
-const nonAdminDeptInfo = { padding: '12px', backgroundColor: '#1a1a1a', border: '1px solid #222', color: '#888', borderRadius: '6px', fontSize: '13px' };
-const uploadBtnStyle = { padding: '8px 14px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'inline-block', textAlign: 'center' };
-const clearBtnStyle = { padding: '8px 14px', backgroundColor: '#ff4d4d', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' };
-const iconBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const tabGroupStyle = { display: 'flex', backgroundColor: '#0a0a0a', padding: '4px', borderRadius: '8px', border: '1px solid #222', gap: '4px' };
-const tabBtnStyle = { border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: '0.2s' };
-const archivedBadgeStyle = { marginTop: '12px', backgroundColor: 'rgba(255, 133, 51, 0.15)', color: '#ff8533', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', letterSpacing: '1px', display: 'inline-block' };
-const emptyStateStyle = { textAlign: 'center', padding: '50px 20px', color: '#666', border: '1px dashed #222', borderRadius: '12px', marginTop: '30px' };
+const deptTag = { fontSize: '12px', color: '#64748b', marginBottom: '14px', fontWeight: '500' };
+const infoRow = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', color: '#475569', marginBottom: '6px' };
+const salaryTag = { marginTop: '12px', fontWeight: '700', color: '#16a34a', fontSize: '13px' };
+const addBtnStyle = { backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 2px 4px rgba(15, 23, 42, 0.15)' };
+const modalOverlay = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
+const modalContent = { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', border: '1px solid #e2e8f0', width: '420px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04)' };
+const inputStyle = { padding: '11px 14px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', borderRadius: '8px', fontSize: '13px', outline: 'none' };
+const saveBtn = { padding: '12px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', flex: 1, fontSize: '13px', boxShadow: '0 2px 4px rgba(15, 23, 42, 0.15)' };
+const cancelBtn = { padding: '12px', backgroundColor: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', flex: 1, fontSize: '13px', fontWeight: '600' };
+const nonAdminDeptInfo = { padding: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', borderRadius: '8px', fontSize: '13px' };
+const uploadBtnStyle = { padding: '8px 14px', backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-block', textAlign: 'center' };
+const clearBtnStyle = { padding: '8px 14px', backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
+const iconBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 0.15s' };
+const tabGroupStyle = { display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', border: '1px solid #e2e8f0', gap: '4px' };
+const tabBtnStyle = { border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: '0.2s' };
+const archivedBadgeStyle = { marginTop: '12px', backgroundColor: '#fff7ed', color: '#ea580c', border: '1px solid #ffedd5', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', letterSpacing: '0.8px', display: 'inline-block' };
+const emptyStateStyle = { textAlign: 'center', padding: '50px 20px', color: '#64748b', border: '1px dashed #cbd5e1', borderRadius: '12px', marginTop: '30px', backgroundColor: '#ffffff' };
+const empIdBadgeStyle = { display: 'inline-block', fontSize: '11px', color: '#2563eb', backgroundColor: '#eff6ff', border: '1px solid #dbeafe', padding: '2px 8px', borderRadius: '6px', fontFamily: 'monospace', fontWeight: '700', marginBottom: '6px' };
+const searchBoxStyle = { display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0 12px', height: '40px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)' };
+const searchInputStyle = { background: 'transparent', border: 'none', outline: 'none', color: '#0f172a', fontSize: '13px', width: '180px' };
 
 export default EmployeeRegistry;

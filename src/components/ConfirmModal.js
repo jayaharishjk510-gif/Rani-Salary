@@ -19,19 +19,19 @@ function ConfirmModal({
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
           <div style={{
             ...iconCircleStyle,
-            backgroundColor: isDanger ? 'rgba(255, 77, 77, 0.12)' : 'rgba(61, 133, 198, 0.12)'
+            backgroundColor: isDanger ? '#fef2f2' : '#eff6ff'
           }}>
             {isDanger ? (
-              <AlertTriangle size={22} color="#ff4d4d" />
+              <AlertTriangle size={22} color="#ef4444" />
             ) : (
-              <HelpCircle size={22} color="#3d85c6" />
+              <HelpCircle size={22} color="#2563eb" />
             )}
           </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: '17px', color: '#fff', fontWeight: '600' }}>
+            <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a', fontWeight: '700' }}>
               {title}
             </h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#888', lineHeight: '1.4' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b', lineHeight: '1.4' }}>
               {message}
             </p>
           </div>
@@ -50,7 +50,7 @@ function ConfirmModal({
             onClick={onConfirm}
             style={{
               ...confirmBtnStyle,
-              backgroundColor: isDanger ? '#ff4d4d' : '#3d85c6',
+              backgroundColor: isDanger ? '#ef4444' : '#2563eb',
               color: '#fff'
             }}
           >
@@ -68,7 +68,7 @@ const overlayStyle = {
   left: 0,
   right: 0,
   bottom: 0,
-  backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  backgroundColor: 'rgba(15, 23, 42, 0.45)',
   backdropFilter: 'blur(4px)',
   display: 'flex',
   alignItems: 'center',
@@ -77,13 +77,13 @@ const overlayStyle = {
 };
 
 const modalStyle = {
-  backgroundColor: '#121212',
-  border: '1px solid #282828',
-  borderRadius: '12px',
+  backgroundColor: '#ffffff',
+  border: '1px solid #e2e8f0',
+  borderRadius: '14px',
   padding: '24px',
   width: '420px',
   maxWidth: '90%',
-  boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)',
+  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
   animation: 'fadeIn 0.2s ease'
 };
 
@@ -99,12 +99,12 @@ const iconCircleStyle = {
 
 const cancelBtnStyle = {
   padding: '10px 18px',
-  backgroundColor: '#222',
-  color: '#bbb',
-  border: '1px solid #333',
-  borderRadius: '6px',
+  backgroundColor: '#f8fafc',
+  color: '#334155',
+  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
   fontSize: '13px',
-  fontWeight: '500',
+  fontWeight: '600',
   cursor: 'pointer',
   transition: '0.2s'
 };
@@ -112,11 +112,12 @@ const cancelBtnStyle = {
 const confirmBtnStyle = {
   padding: '10px 20px',
   border: 'none',
-  borderRadius: '6px',
+  borderRadius: '8px',
   fontSize: '13px',
   fontWeight: '600',
   cursor: 'pointer',
-  transition: '0.2s'
+  transition: '0.2s',
+  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
 };
 
 export default ConfirmModal;

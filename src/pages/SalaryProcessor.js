@@ -42,7 +42,16 @@ function SalaryProcessor({ userPermissions }) {
       where("dept", "in", userPermissions.depts)
     );
     const unsubEmps = onSnapshot(empQuery, (snap) => {
-      setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => {
+        if (a.employeeId && b.employeeId) {
+          return a.employeeId.localeCompare(b.employeeId, undefined, { numeric: true });
+        }
+        if (a.employeeId) return -1;
+        if (b.employeeId) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      setEmployees(list);
     }, (err) => {
       showToast("Error loading employees: " + err.message, 'error');
     });
@@ -99,9 +108,13 @@ function SalaryProcessor({ userPermissions }) {
   }, [selectedEmpId, month, year, employees]);
 
   const selectedEmp = employees.find(e => e.id === selectedEmpId);
+  const isMonthly = selectedEmp?.salaryType === 'monthly' || (Number(selectedEmp?.baseSalary) > 1500 && selectedEmp?.salaryType !== 'daily');
   const baseSalary = selectedEmp ? (Number(selectedEmp.baseSalary) || 0) : 0;
-  const fixedEarnings = baseSalary > 0 ? Math.round(baseSalary * (Number(days) || 0)) : 0;
-  const lBonusAmount = lBonus ? baseSalary : 0;
+  const dailyRateEquiv = isMonthly ? (baseSalary > 0 ? Math.round(baseSalary / 30) : 0) : baseSalary;
+  const fixedEarnings = isMonthly
+    ? (Number(days) === 30 ? baseSalary : Math.round((baseSalary / 30) * (Number(days) || 0)))
+    : (baseSalary > 0 ? Math.round(baseSalary * (Number(days) || 0)) : 0);
+  const lBonusAmount = lBonus ? dailyRateEquiv : 0;
   const totalAdd = (Number(incentive) || 0) + lBonusAmount + (Number(ts) || 0) + (Number(rdAdd) || 0);
   const totalDed = (Number(advance) || 0) + (Number(jBalance) || 0) + (Number(penalty) || 0) + (Number(rdDed) || 0) + (Number(pf) || 0);
   const gTotal = Math.round(fixedEarnings + totalAdd - totalDed);
@@ -111,27 +124,46 @@ function SalaryProcessor({ userPermissions }) {
     setSaving(true);
 
     try {
-      // Guard against duplicate: check if an ACTIVE record for this employee+month+year already exists
-      const dupCheck = query(
-        collection(db, "salary_records"),
-        where("employeeId", "==", selectedEmpId),
-        where("month", "==", month),
-        where("year", "==", year)
+      // Guard against duplicate: check if an ACTIVE record for this employee+month+year already exists in loaded records
+      const isAlreadySaved = visibleSalaryRecords.some(
+        r => r.employeeId === selectedEmpId && r.month === month && r.year === year
       );
-      const dupSnap = await getDocs(dupCheck);
-      const activeDups = dupSnap.docs.filter(d => !d.data().isDeleted);
 
-      if (activeDups.length > 0) {
+      if (isAlreadySaved) {
         showToast(`Salary for ${selectedEmp.name} in ${month} ${year} is already saved!`, 'warning');
         setSaving(false);
         return;
       }
 
+      // Extra check directly in Firestore scoped to the employee's department to comply with security rules
+      try {
+        const dupCheck = query(
+          collection(db, "salary_records"),
+          where("dept", "==", selectedEmp.dept),
+          where("employeeId", "==", selectedEmpId),
+          where("month", "==", month),
+          where("year", "==", year)
+        );
+        const dupSnap = await getDocs(dupCheck);
+        const activeDups = dupSnap.docs.filter(d => !d.data().isDeleted);
+
+        if (activeDups.length > 0) {
+          showToast(`Salary for ${selectedEmp.name} in ${month} ${year} is already saved!`, 'warning');
+          setSaving(false);
+          return;
+        }
+      } catch (checkErr) {
+        // In-memory check already validated duplicates; ignore network or index query errors
+        console.warn("Duplicate query check skipped:", checkErr);
+      }
+
       // Strictly cast all numeric fields to Numbers
       await addDoc(collection(db, "salary_records"), {
         employeeId: selectedEmpId,
+        employeeCode: selectedEmp.employeeId || '',
         name: selectedEmp.name,
         dept: selectedEmp.dept,
+        salaryType: isMonthly ? 'monthly' : 'daily',
         month,
         year,
         days: Number(days) || 0,
@@ -148,6 +180,7 @@ function SalaryProcessor({ userPermissions }) {
         net: Number(gTotal) || 0,
         remarks: remarks || 'GOOD',
         baseSalary: Number(baseSalary) || 0,
+        dailyRateEquiv: Number(dailyRateEquiv) || 0,
         fixedEarnings: Number(fixedEarnings) || 0,
         createdAt: new Date(),
         isDeleted: false
@@ -199,9 +232,9 @@ function SalaryProcessor({ userPermissions }) {
       <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }} className="no-scrollbar">
         <div style={headerRow}>
           <div>
-            <h2 style={{ fontSize: '20px', margin: 0 }}>Salary Entry</h2>
-            <p style={{ margin: '4px 0 0 0', color: '#666', fontSize: '13px' }}>
-              {selectedEmp ? `Calculating for: ${selectedEmp.name} (${selectedEmp.dept})` : 'Select an employee from the right panel'}
+            <h2 style={{ fontSize: '24px', margin: 0, color: '#0f172a', fontWeight: '800' }}>Salary Entry</h2>
+            <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
+              {selectedEmp ? `Calculating for: ${selectedEmp.name}${selectedEmp.employeeId ? ` [${selectedEmp.employeeId}]` : ''} (${selectedEmp.dept})` : 'Select an employee from the right panel'}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -216,32 +249,59 @@ function SalaryProcessor({ userPermissions }) {
 
         <div style={gridContainer}>
           <div style={sectionBox}>
-            <h3 style={{ color: '#b6d7a8', fontSize: '13px', marginBottom: '15px' }}>EARNINGS</h3>
-            <div style={field}><label>Days Worked</label><input type="number" min="0" max="31" value={days} onChange={e => setDays(e.target.value)} style={input} /></div>
-            <div style={field}><label>Daily Rate</label><span>₹{baseSalary}/day</span></div>
-            <div style={field}><label>Fixed Total ({days} days)</label><span style={{fontWeight:'bold'}}>₹{fixedEarnings}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', paddingBottom: '8px', borderBottom: '1px solid #e2e8f0' }}>
+              <span style={{ color: '#166534', fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px' }}>EARNINGS</span>
+              {selectedEmp && (
+                <span style={{ fontSize: '11px', color: isMonthly ? '#1e40af' : '#166534', backgroundColor: isMonthly ? '#eff6ff' : '#f0fdf4', padding: '2px 8px', borderRadius: '4px', fontWeight: '700' }}>
+                  {isMonthly ? 'Monthly Staff' : 'Daily Staff'}
+                </span>
+              )}
+            </div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>Days Worked</label><input type="number" min="0" max="31" value={days} onChange={e => setDays(e.target.value)} style={input} /></div>
+            <div style={field}>
+              <label style={{ color: '#475569', fontWeight: '500' }}>{isMonthly ? 'Monthly Salary' : 'Daily Rate'}</label>
+              <span style={{ color: '#0f172a', fontWeight: '600' }}>₹{baseSalary}{isMonthly ? '/month' : '/day'}</span>
+            </div>
+            {isMonthly && (
+              <div style={field}>
+                <label style={{ color: '#94a3b8' }}>Daily Equivalent (÷30)</label>
+                <span style={{ color: '#94a3b8' }}>₹{dailyRateEquiv}/day</span>
+              </div>
+            )}
+            <div style={field}>
+              <label style={{ color: '#475569', fontWeight: '500' }}>Fixed Total ({days} days)</label>
+              <span style={{ fontWeight: '700', color: '#0f172a' }}>₹{fixedEarnings}</span>
+            </div>
             <hr style={hrStyle}/>
-            <div style={field}><label>Incentive</label><input type="number" min="0" value={incentive} onChange={e => setIncentive(e.target.value)} style={input} /></div>
-            <div style={field}><label>L. Bonus (1 Day)</label><input type="checkbox" checked={lBonus} onChange={e => setLBonus(e.target.checked)} style={checkboxStyle} /></div>
-            <div style={field}><label>TS Allowance</label><input type="number" min="0" value={ts} onChange={e => setTs(e.target.value)} style={input} /></div>
-            <div style={field}><label>RD (Add)</label><input type="number" min="0" value={rdAdd} onChange={e => setRdAdd(e.target.value)} style={input} /></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>Incentive</label><input type="number" min="0" value={incentive} onChange={e => setIncentive(e.target.value)} style={input} /></div>
+            <div style={field}>
+              <label style={{ color: '#475569', fontWeight: '500' }}>
+                L. Bonus (1 Day)
+                {lBonus && <span style={{ color: '#16a34a', marginLeft: '6px', fontSize: '11px', fontWeight: '700' }}>(+₹{lBonusAmount})</span>}
+              </label>
+              <input type="checkbox" checked={lBonus} onChange={e => setLBonus(e.target.checked)} style={checkboxStyle} />
+            </div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>TS Allowance</label><input type="number" min="0" value={ts} onChange={e => setTs(e.target.value)} style={input} /></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>RD (Add)</label><input type="number" min="0" value={rdAdd} onChange={e => setRdAdd(e.target.value)} style={input} /></div>
           </div>
 
           <div style={sectionBox}>
-            <h3 style={{ color: '#ea9999', fontSize: '13px', marginBottom: '15px' }}>DEDUCTIONS</h3>
-            <div style={field}><label style={{color:'#ffd966', fontWeight:'bold'}}>PF (Fund)</label><input type="number" min="0" value={pf} onChange={e => setPf(e.target.value)} style={pfInput} /></div>
-            <div style={field}><label>Advance (Auto – {month})</label><span style={{color:'#ff6b6b'}}>- ₹{advance}</span></div>
-            <div style={field}><label>J. Balance</label><input type="number" min="0" value={jBalance} onChange={e => setJBalance(e.target.value)} style={input} /></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', paddingBottom: '8px', borderBottom: '1px solid #e2e8f0' }}>
+              <span style={{ color: '#991b1b', fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px' }}>DEDUCTIONS</span>
+            </div>
+            <div style={field}><label style={{ color: '#854d0e', fontWeight: '700' }}>PF (Fund)</label><input type="number" min="0" value={pf} onChange={e => setPf(e.target.value)} style={pfInput} /></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>Advance (Auto – {month})</label><span style={{ color: '#ef4444', fontWeight: '700' }}>- ₹{advance}</span></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>J. Balance</label><input type="number" min="0" value={jBalance} onChange={e => setJBalance(e.target.value)} style={input} /></div>
             <hr style={hrStyle}/>
-            <div style={field}><label>Penalty</label><input type="number" min="0" value={penalty} onChange={e => setPenalty(e.target.value)} style={input} /></div>
-            <div style={field}><label>RD (Ded)</label><input type="number" min="0" value={rdDed} onChange={e => setRdDed(e.target.value)} style={input} /></div>
-            <div style={field}><label>Remarks</label><input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} style={input} /></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>Penalty</label><input type="number" min="0" value={penalty} onChange={e => setPenalty(e.target.value)} style={input} /></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>RD (Ded)</label><input type="number" min="0" value={rdDed} onChange={e => setRdDed(e.target.value)} style={input} /></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>Remarks</label><input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} style={input} /></div>
           </div>
         </div>
 
         <div style={summaryBox}>
           <div>
-            <div style={{fontSize:'10px', color:'#555', letterSpacing: '0.5px'}}>TOTAL NET PAYABLE</div>
+            <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.6px', fontWeight: '700' }}>TOTAL NET PAYABLE</div>
             <div style={totalVal}>₹{gTotal}</div>
           </div>
           <button
@@ -258,36 +318,47 @@ function SalaryProcessor({ userPermissions }) {
         </div>
 
         <div style={tableContainer}>
-          <h4 style={{fontSize:'12px', marginBottom:'10px', color: '#888'}}>Recent Entries ({month} {year})</h4>
+          <h4 style={{ fontSize: '13px', margin: '0 0 12px 0', color: '#0f172a', fontWeight: '700' }}>Recent Entries ({month} {year})</h4>
           {visibleSalaryRecords.length > 0 ? (
-            <table style={tableStyle}>
-              <thead><tr><th style={th}>Name</th><th style={th}>Days</th><th style={th}>G.Total</th><th style={{ ...th, textAlign: 'center' }}>Action</th></tr></thead>
-              <tbody>
-                {visibleSalaryRecords.map(r => (
-                  <tr key={r.id} style={{borderBottom:'1px solid #1a1a1a'}}>
-                    <td style={td}>{r.name}</td>
-                    <td style={td}>{r.days}</td>
-                    <td style={{ ...td, color: '#4caf50', fontWeight: 'bold' }}>₹{r.gTotal}</td>
-                    <td style={{ ...td, textAlign: 'center' }}>
-                      <button
-                        onClick={() => setConfirmModal({
-                          isOpen: true,
-                          record: r,
-                          title: `Archive Salary Record?`,
-                          message: `Archive salary record for ${r.name} (${month} ${year})? The record will be hidden from active lists and slips, preserving database history.`
-                        })}
-                        style={iconBtnStyle}
-                        title="Archive Record (Safe)"
-                      >
-                        <Archive size={14} color="#ff8533" />
-                      </button>
-                    </td>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={th}>EMP ID</th>
+                    <th style={th}>Name</th>
+                    <th style={th}>Days</th>
+                    <th style={th}>G.Total</th>
+                    <th style={{ ...th, textAlign: 'center' }}>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {visibleSalaryRecords.map(r => (
+                    <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ ...td, color: '#2563eb', fontFamily: 'monospace', fontSize: '12px', fontWeight: '600' }}>{r.employeeCode || '—'}</td>
+                      <td style={{ ...td, fontWeight: '600', color: '#0f172a' }}>{r.name}</td>
+                      <td style={td}>{r.days}</td>
+                      <td style={{ ...td, color: '#16a34a', fontWeight: '700' }}>₹{r.gTotal}</td>
+                      <td style={{ ...td, textAlign: 'center' }}>
+                        <button
+                          onClick={() => setConfirmModal({
+                            isOpen: true,
+                            record: r,
+                            title: `Archive Salary Record?`,
+                            message: `Archive salary record for ${r.name} (${month} ${year})? The record will be hidden from active lists and slips, preserving database history.`
+                          })}
+                          style={iconBtnStyle}
+                          title="Archive Record (Safe)"
+                        >
+                          <Archive size={14} color="#ea580c" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#555', fontSize: '13px' }}>
+            <div style={{ textAlign: 'center', padding: '24px', color: '#64748b', fontSize: '13px' }}>
               No salary entries for {month} {year} yet.
             </div>
           )}
@@ -296,7 +367,7 @@ function SalaryProcessor({ userPermissions }) {
 
       {/* RIGHT SIDEBAR */}
       <div style={rightSidebar}>
-        <h4 style={{fontSize:'13px', marginBottom:'15px', color:'#fff'}}>Select Employee</h4>
+        <h4 style={{ fontSize: '14px', margin: '0 0 14px 0', color: '#0f172a', fontWeight: '700' }}>Select Employee</h4>
         <div style={scrollList} className="no-scrollbar">
           {visibleEmployees.map(emp => {
             const isDone = visibleSalaryRecords.some(r => r.employeeId === emp.id);
@@ -304,14 +375,18 @@ function SalaryProcessor({ userPermissions }) {
             return (
               <div key={emp.id} onClick={() => setSelectedEmpId(emp.id)} style={{
                 ...empItem,
-                backgroundColor: isSelected ? '#222' : '#111',
-                borderLeft: isSelected ? '4px solid #4caf50' : '4px solid transparent'
+                backgroundColor: isSelected ? '#f0fdf4' : '#f8fafc',
+                borderLeft: isSelected ? '4px solid #16a34a' : '4px solid transparent',
+                border: isSelected ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                borderLeftWidth: '4px'
               }}>
-                <div style={{fontSize:'12px', color: isSelected ? '#fff' : '#888', fontWeight: isSelected ? 'bold' : 'normal'}}>
+                <div style={{ fontSize: '12px', color: isSelected ? '#166534' : '#0f172a', fontWeight: isSelected ? '700' : '500' }}>
                   {emp.name}
-                  <div style={{ fontSize: '10px', color: '#555' }}>{emp.dept}</div>
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                    {emp.employeeId ? <span style={{ color: '#2563eb', fontFamily: 'monospace', fontWeight: '600' }}>{emp.employeeId} • </span> : null}{emp.dept}
+                  </div>
                 </div>
-                {isDone ? <CheckCircle size={14} color="#4caf50" /> : <Clock size={14} color="#333" />}
+                {isDone ? <CheckCircle size={15} color="#16a34a" /> : <Clock size={15} color="#cbd5e1" />}
               </div>
             );
           })}
@@ -335,24 +410,24 @@ function SalaryProcessor({ userPermissions }) {
 
 // Styles
 const headerRow = { display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' };
-const selectStyle = { padding: '8px 12px', backgroundColor: '#111', color: '#fff', border: '1px solid #333', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' };
-const gridContainer = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' };
-const sectionBox = { backgroundColor: '#0a0a0a', padding: '15px', borderRadius: '10px', border: '1px solid #222' };
+const selectStyle = { padding: '8px 14px', backgroundColor: '#ffffff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', outline: 'none', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)' };
+const gridContainer = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' };
+const sectionBox = { backgroundColor: '#ffffff', padding: '18px', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
 const field = { display: 'flex', justifyContent: 'space-between', marginBottom: '10px', alignItems: 'center', fontSize: '12px' };
-const input = { width: '90px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', padding: '6px', textAlign: 'right', borderRadius: '4px', fontSize: '12px' };
-const pfInput = { ...input, border: '1px solid #ffd966', color: '#ffd966' };
-const summaryBox = { marginTop: '15px', padding: '20px', backgroundColor: '#111', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #222' };
-const totalVal = { fontSize: '28px', fontWeight: 'bold', color: '#4caf50' };
-const saveBtn = { backgroundColor: '#4caf50', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', gap: '8px', fontSize: '13px', alignItems: 'center' };
-const rightSidebar = { width: '240px', backgroundColor: '#050505', borderLeft: '1px solid #222', padding: '15px', display: 'flex', flexDirection: 'column' };
+const input = { width: '95px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', padding: '6px 8px', textAlign: 'right', borderRadius: '6px', fontSize: '12px', outline: 'none' };
+const pfInput = { ...input, border: '1px solid #facc15', color: '#854d0e', backgroundColor: '#fefce8' };
+const summaryBox = { marginTop: '18px', padding: '20px 24px', backgroundColor: '#ffffff', borderRadius: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const totalVal = { fontSize: '28px', fontWeight: '800', color: '#16a34a' };
+const saveBtn = { backgroundColor: '#16a34a', color: '#ffffff', border: 'none', padding: '11px 22px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', display: 'flex', gap: '8px', fontSize: '13px', alignItems: 'center', boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)' };
+const rightSidebar = { width: '250px', backgroundColor: '#ffffff', borderLeft: '1px solid #e2e8f0', padding: '18px', display: 'flex', flexDirection: 'column', borderRadius: '14px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
 const scrollList = { overflowY: 'auto', flex: 1 };
-const empItem = { padding: '10px', marginBottom: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '4px' };
-const tableContainer = { marginTop: '20px', backgroundColor: '#0a0a0a', padding: '15px', borderRadius: '10px' };
+const empItem = { padding: '10px 12px', marginBottom: '6px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '8px', transition: 'all 0.15s ease' };
+const tableContainer = { marginTop: '20px', backgroundColor: '#ffffff', padding: '18px', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
 const tableStyle = { width: '100%', borderCollapse: 'collapse', textAlign: 'left' };
-const th = { padding: '8px', color: '#666', fontSize: '10px', textTransform: 'uppercase' };
-const td = { padding: '8px', fontSize: '12px', color: '#ccc' };
-const hrStyle = { border: 'none', borderTop: '1px solid #222', margin: '10px 0' };
-const checkboxStyle = { width: '16px', height: '16px', cursor: 'pointer', accentColor: '#4caf50' };
+const th = { padding: '10px 12px', color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' };
+const td = { padding: '11px 12px', fontSize: '13px', color: '#334155' };
+const hrStyle = { border: 'none', borderTop: '1px solid #f1f5f9', margin: '12px 0' };
+const checkboxStyle = { width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' };
 const iconBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
 
 export default SalaryProcessor;

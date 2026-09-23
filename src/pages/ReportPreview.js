@@ -61,7 +61,10 @@ function ReportPreview({ userPermissions }) {
     // Exclude soft-deleted / archived records
     if (rec.isDeleted) return false;
 
-    const matchesName = rec.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase().trim();
+    const matchesSearch = !term ||
+      (rec.name && rec.name.toLowerCase().includes(term)) ||
+      (rec.employeeCode && rec.employeeCode.toLowerCase().includes(term));
     
     // Security: Limit data matching to allowed departments
     const isDeptAllowed = userPermissions?.depts?.includes(rec.dept);
@@ -69,7 +72,7 @@ function ReportPreview({ userPermissions }) {
 
     const matchesMonth = filterMonth === 'All' || rec.month === filterMonth;
     const matchesYear = filterYear === 'All' || rec.year === filterYear;
-    return matchesName && matchesDept && matchesMonth && matchesYear;
+    return matchesSearch && matchesDept && matchesMonth && matchesYear;
   });
 
   // Handle select all checkbox
@@ -109,12 +112,14 @@ function ReportPreview({ userPermissions }) {
     }
 
     const headers = [
+      "Employee ID",
       "Employee Name",
       "Shop",
       "Month",
       "Year",
       "Days Worked",
-      "Daily Rate",
+      "Pay Type",
+      "Rate / Salary",
       "Fixed Earnings",
       "Incentive",
       "L.Bonus",
@@ -131,11 +136,13 @@ function ReportPreview({ userPermissions }) {
     ];
 
     const rows = recordsToPrint.map(r => [
+      `"${(r.employeeCode || '').replace(/"/g, '""')}"`,
       `"${(r.name || '').replace(/"/g, '""')}"`,
       `"${(r.dept || '').replace(/"/g, '""')}"`,
       `"${r.month || ''}"`,
       `"${r.year || ''}"`,
       Number(r.days) || 0,
+      `"${r.salaryType === 'monthly' || Number(r.baseSalary) > 1500 ? 'Monthly' : 'Daily'}"`,
       Number(r.baseSalary) || 0,
       Number(r.fixedEarnings) || 0,
       Number(r.incentive ?? r.insentive ?? 0),
@@ -186,8 +193,8 @@ function ReportPreview({ userPermissions }) {
       <div className="no-print">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
           <div>
-            <h2 style={{ margin: 0 }}>Salary Records</h2>
-            <p style={{ margin: '4px 0 0 0', color: '#666', fontSize: '13px' }}>
+            <h2 style={{ margin: 0, color: '#0f172a', fontWeight: '800', fontSize: '24px' }}>Salary Records</h2>
+            <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
               Filter, search, print salary slips, and export to spreadsheets
             </p>
           </div>
@@ -214,10 +221,10 @@ function ReportPreview({ userPermissions }) {
         {/* Filter Toolbar */}
         <div style={filterBar}>
           <div style={searchContainer}>
-            <Search size={16} color="#888" style={{ marginLeft: '10px' }} />
+            <Search size={16} color="#64748b" style={{ marginLeft: '12px' }} />
             <input
               type="text"
-              placeholder="Search employee name..."
+              placeholder="Search by ID or name..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               style={searchInput}
@@ -264,6 +271,7 @@ function ReportPreview({ userPermissions }) {
                       style={checkboxStyle}
                     />
                   </th>
+                  <th style={thStyle}>EMP ID</th>
                   <th style={thStyle}>EMPLOYEE</th>
                   <th style={thStyle}>SHOP</th>
                   <th style={thStyle}>PERIOD</th>
@@ -277,7 +285,7 @@ function ReportPreview({ userPermissions }) {
                 {filteredRecords.map(rec => {
                   const isChecked = selectedIds.includes(rec.id);
                   return (
-                    <tr key={rec.id} style={{ ...trStyle, backgroundColor: isChecked ? '#1a1a1a' : 'transparent' }}>
+                    <tr key={rec.id} style={{ ...trStyle, backgroundColor: isChecked ? '#f0fdf4' : 'transparent' }}>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         <input
                           type="checkbox"
@@ -286,12 +294,15 @@ function ReportPreview({ userPermissions }) {
                           style={checkboxStyle}
                         />
                       </td>
-                      <td style={{ ...tdStyle, fontWeight: 'bold', color: '#fff' }}>{rec.name}</td>
+                      <td style={{ ...tdStyle, color: '#2563eb', fontFamily: 'monospace', fontSize: '12px', fontWeight: '600' }}>
+                        {rec.employeeCode || '—'}
+                      </td>
+                      <td style={{ ...tdStyle, fontWeight: '600', color: '#0f172a' }}>{rec.name}</td>
                       <td style={tdStyle}>{rec.dept}</td>
                       <td style={tdStyle}>{rec.month} {rec.year}</td>
                       <td style={tdStyle}>{rec.days}</td>
-                      <td style={{ ...tdStyle, color: '#b6d7a8' }}>₹{rec.gTotal}</td>
-                      <td style={{ ...tdStyle, color: '#4caf50', fontWeight: 'bold' }}>₹{rec.net ?? rec.gTotal}</td>
+                      <td style={{ ...tdStyle, color: '#0f172a' }}>₹{rec.gTotal}</td>
+                      <td style={{ ...tdStyle, color: '#16a34a', fontWeight: '700' }}>₹{rec.net ?? rec.gTotal}</td>
                       <td style={tdStyle}>
                         <span style={rec.remarks === 'GOOD' ? remarkGoodTag : remarkOtherTag}>
                           {rec.remarks}
@@ -303,7 +314,7 @@ function ReportPreview({ userPermissions }) {
               </tbody>
             </table>
           ) : (
-            <div style={{ textAlign: 'center', padding: '50px', color: '#666' }}>
+            <div style={{ textAlign: 'center', padding: '50px', color: '#64748b' }}>
               No salary records found matching filters.
             </div>
           )}
@@ -321,11 +332,34 @@ function ReportPreview({ userPermissions }) {
           display: none;
         }
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 5mm 6mm;
+          }
           .no-print { display: none !important; }
-          .print-only { display: block !important; }
-          body { background-color: white !important; color: black !important; }
+          .print-only {
+            display: block !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          body, html {
+            background-color: white !important;
+            color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+          }
           nav { display: none !important; }
-          main { padding: 0 !important; margin: 0 !important; }
+          main {
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            display: block !important;
+          }
         }
       `}</style>
     </div>
@@ -337,21 +371,22 @@ const filterBar = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  backgroundColor: '#111',
-  padding: '15px 20px',
-  borderRadius: '8px',
-  marginBottom: '20px',
-  border: '1px solid #222',
+  backgroundColor: '#ffffff',
+  padding: '16px 20px',
+  borderRadius: '14px',
+  marginBottom: '22px',
+  border: '1px solid #e2e8f0',
   flexWrap: 'wrap',
-  gap: '15px'
+  gap: '15px',
+  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
 };
 
 const searchContainer = {
   display: 'flex',
   alignItems: 'center',
-  backgroundColor: '#000',
-  border: '1px solid #333',
-  borderRadius: '6px',
+  backgroundColor: '#ffffff',
+  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
   flex: 1,
   minWidth: '250px'
 };
@@ -359,11 +394,11 @@ const searchContainer = {
 const searchInput = {
   background: 'none',
   border: 'none',
-  color: '#fff',
-  padding: '10px',
+  color: '#0f172a',
+  padding: '10px 12px',
   outline: 'none',
   width: '100%',
-  fontSize: '14px'
+  fontSize: '13px'
 };
 
 const dropdownGroup = {
@@ -374,52 +409,55 @@ const dropdownGroup = {
 };
 
 const selectStyle = {
-  padding: '10px 15px',
-  backgroundColor: '#000',
-  color: '#fff',
-  border: '1px solid #333',
-  borderRadius: '6px',
+  padding: '10px 14px',
+  backgroundColor: '#ffffff',
+  color: '#0f172a',
+  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
   cursor: 'pointer',
   outline: 'none',
-  fontSize: '13px'
+  fontSize: '13px',
+  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)'
 };
 
 const printBtn = {
-  backgroundColor: '#3d85c6',
-  color: '#fff',
+  backgroundColor: '#2563eb',
+  color: '#ffffff',
   border: 'none',
   padding: '10px 20px',
-  borderRadius: '6px',
+  borderRadius: '8px',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
-  fontWeight: 'bold',
+  fontWeight: '700',
   transition: '0.2s opacity',
-  fontSize: '13px'
+  fontSize: '13px',
+  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
 };
 
 const exportBtn = {
-  backgroundColor: '#222',
-  color: '#fff',
-  border: '1px solid #333',
+  backgroundColor: '#ffffff',
+  color: '#334155',
+  border: '1px solid #cbd5e1',
   padding: '10px 18px',
-  borderRadius: '6px',
+  borderRadius: '8px',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
   fontWeight: '600',
   transition: '0.2s background-color',
-  fontSize: '13px'
+  fontSize: '13px',
+  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)'
 };
 
 const resetBtn = {
   padding: '10px',
-  backgroundColor: '#222',
-  color: '#aaa',
-  border: '1px solid #333',
-  borderRadius: '6px',
+  backgroundColor: '#ffffff',
+  color: '#64748b',
+  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
@@ -428,11 +466,12 @@ const resetBtn = {
 };
 
 const tableContainer = {
-  backgroundColor: '#111',
-  borderRadius: '12px',
-  border: '1px solid #222',
-  padding: '20px',
-  overflowX: 'auto'
+  backgroundColor: '#ffffff',
+  borderRadius: '14px',
+  border: '1px solid #e2e8f0',
+  padding: '22px',
+  overflowX: 'auto',
+  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
 };
 
 const tableStyle = {
@@ -442,52 +481,55 @@ const tableStyle = {
 };
 
 const headerRow = {
-  borderBottom: '2px solid #333'
+  borderBottom: '1px solid #e2e8f0',
+  backgroundColor: '#f8fafc'
 };
 
 const thStyle = {
-  padding: '12px 15px',
-  color: '#888',
+  padding: '12px 16px',
+  color: '#64748b',
   fontSize: '11px',
   textTransform: 'uppercase',
-  fontWeight: 'bold',
+  fontWeight: '700',
   letterSpacing: '0.5px'
 };
 
 const trStyle = {
-  borderBottom: '1px solid #222',
-  transition: 'background-color 0.2s'
+  borderBottom: '1px solid #f1f5f9',
+  transition: 'background-color 0.15s'
 };
 
 const tdStyle = {
-  padding: '14px 15px',
+  padding: '14px 16px',
   fontSize: '13px',
-  color: '#ccc'
+  color: '#334155'
 };
 
 const checkboxStyle = {
   width: '16px',
   height: '16px',
   cursor: 'pointer',
-  accentColor: '#3d85c6'
+  accentColor: '#16a34a'
 };
 
 const remarkGoodTag = {
-  backgroundColor: 'rgba(76, 175, 80, 0.1)',
-  color: '#4caf50',
-  padding: '4px 8px',
-  borderRadius: '4px',
+  backgroundColor: '#f0fdf4',
+  color: '#166534',
+  border: '1px solid #bbf7d0',
+  padding: '3px 8px',
+  borderRadius: '6px',
   fontSize: '11px',
-  fontWeight: 'bold'
+  fontWeight: '700'
 };
 
 const remarkOtherTag = {
-  backgroundColor: 'rgba(255, 193, 7, 0.1)',
-  color: '#ffc107',
-  padding: '4px 8px',
-  borderRadius: '4px',
+  backgroundColor: '#fffbeb',
+  color: '#b45309',
+  border: '1px solid #fde68a',
+  padding: '3px 8px',
+  borderRadius: '6px',
   fontSize: '11px',
-  fontWeight: 'bold'
+  fontWeight: '700'
 };
 
 export default ReportPreview;

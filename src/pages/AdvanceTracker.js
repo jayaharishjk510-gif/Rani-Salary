@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, where } from 'firebase/firestore';
-import { IndianRupee, Calendar, User, FileText, Download, Archive } from 'lucide-react';
+import { IndianRupee, Calendar, User, FileText, Download, Archive, Filter } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
+
+const getCurrentMonthStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 function AdvanceTracker({ userPermissions }) {
   const { showToast } = useToast();
@@ -15,10 +20,20 @@ function AdvanceTracker({ userPermissions }) {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, adv: null });
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthStr());
 
-  // Filter lists to exclude soft-deleted records
+  // Map for fast, reliable employee details lookup (e.g. employeeId code like NRJ01)
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  // Filter lists to exclude soft-deleted records and show only current/selected month advances
   const visibleEmployees = employees.filter(e => !e.isDeleted);
-  const visibleAdvances = advances.filter(a => !a.isDeleted);
+  const visibleAdvances = advances.filter(a => {
+    if (a.isDeleted) return false;
+    if (selectedMonth === 'all') return true;
+    return a.date && a.date.startsWith(selectedMonth);
+  });
+
+  const totalMonthAdvance = visibleAdvances.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
 
   // Fetch Employees for dropdown
   useEffect(() => {
@@ -28,7 +43,16 @@ function AdvanceTracker({ userPermissions }) {
       where("dept", "in", userPermissions.depts)
     );
     return onSnapshot(q, (snapshot) => {
-      setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      list.sort((a, b) => {
+        if (a.employeeId && b.employeeId) {
+          return a.employeeId.localeCompare(b.employeeId, undefined, { numeric: true });
+        }
+        if (a.employeeId) return -1;
+        if (b.employeeId) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      setEmployees(list);
     }, (err) => {
       showToast("Error loading employees: " + err.message, 'error');
     });
@@ -64,6 +88,7 @@ function AdvanceTracker({ userPermissions }) {
     try {
       await addDoc(collection(db, "advances"), {
         employeeId: selectedEmp,
+        employeeCode: emp.employeeId || '',
         employeeName: emp.name,
         dept: emp.dept,
         amount: Number(amount) || 0,
@@ -107,21 +132,26 @@ function AdvanceTracker({ userPermissions }) {
       return;
     }
 
-    const headers = ["Date", "Employee Name", "Shop", "Amount (INR)", "Notes"];
-    const rows = visibleAdvances.map(a => [
-      `"${a.date || ''}"`,
-      `"${(a.employeeName || '').replace(/"/g, '""')}"`,
-      `"${(a.dept || '').replace(/"/g, '""')}"`,
-      Number(a.amount) || 0,
-      `"${(a.notes || '').replace(/"/g, '""')}"`
-    ]);
+    const headers = ["Date", "Employee ID", "Employee Name", "Shop", "Amount (INR)", "Notes"];
+    const rows = visibleAdvances.map(a => {
+      const empCode = a.employeeCode || empMap.get(a.employeeId)?.employeeId || '';
+      return [
+        `"${a.date || ''}"`,
+        `"${empCode.replace(/"/g, '""')}"`,
+        `"${(a.employeeName || '').replace(/"/g, '""')}"`,
+        `"${(a.dept || '').replace(/"/g, '""')}"`,
+        Number(a.amount) || 0,
+        `"${(a.notes || '').replace(/"/g, '""')}"`
+      ];
+    });
 
     const csvString = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Advances_${new Date().toISOString().split('T')[0]}.csv`);
+    const fileSuffix = selectedMonth === 'all' ? 'All_Months' : selectedMonth;
+    link.setAttribute("download", `Advances_${fileSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -129,13 +159,28 @@ function AdvanceTracker({ userPermissions }) {
     showToast("Advances exported to CSV successfully!", "success");
   };
 
+  const currentMonth = getCurrentMonthStr();
+  const isCurrentMonth = selectedMonth === currentMonth;
+
+  // Format month for display
+  const getMonthLabel = () => {
+    if (selectedMonth === 'all') return 'All Historical Advances';
+    try {
+      const [y, m] = selectedMonth.split('-');
+      const dateObj = new Date(Number(y), Number(m) - 1, 1);
+      return dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    } catch (e) {
+      return selectedMonth;
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
         <div>
-          <h2 style={{ margin: 0 }}>Advance Register</h2>
-          <p style={{ margin: '4px 0 0 0', color: '#666', fontSize: '13px' }}>
-            Record cash advances and track monthly deductions
+          <h2 style={{ margin: 0, color: '#0f172a', fontWeight: '800', fontSize: '24px' }}>Advance Register</h2>
+          <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
+            Record cash advances and track deductions for the current pay cycle
           </p>
         </div>
         <button
@@ -147,24 +192,26 @@ function AdvanceTracker({ userPermissions }) {
             cursor: visibleAdvances.length === 0 ? 'not-allowed' : 'pointer'
           }}
         >
-          <Download size={16} /> Export to CSV ({visibleAdvances.length})
+          <Download size={16} /> Export CSV ({visibleAdvances.length})
         </button>
       </div>
 
       {/* Entry Form */}
       <form onSubmit={handleAddAdvance} style={formStyle}>
         <div style={inputGroup}>
-          <User size={18} color="#888" />
+          <User size={18} color="#64748b" />
           <select value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} style={selectStyle} required>
             <option value="" style={optionStyle}>Select Employee</option>
             {visibleEmployees.map(emp => (
-              <option key={emp.id} value={emp.id} style={optionStyle}>{emp.name} ({emp.dept})</option>
+              <option key={emp.id} value={emp.id} style={optionStyle}>
+                {emp.employeeId ? `[${emp.employeeId}] ` : ''}{emp.name} ({emp.dept})
+              </option>
             ))}
           </select>
         </div>
 
         <div style={inputGroup}>
-          <IndianRupee size={18} color="#888" />
+          <IndianRupee size={18} color="#64748b" />
           <input
             type="number"
             placeholder="Amount (₹)"
@@ -177,7 +224,7 @@ function AdvanceTracker({ userPermissions }) {
         </div>
 
         <div style={inputGroup}>
-          <Calendar size={18} color="#888" />
+          <Calendar size={18} color="#64748b" />
           <input
             type="date"
             value={date}
@@ -188,7 +235,7 @@ function AdvanceTracker({ userPermissions }) {
         </div>
 
         <div style={inputGroup}>
-          <FileText size={18} color="#888" />
+          <FileText size={18} color="#64748b" />
           <input
             type="text"
             placeholder="Notes (Optional)"
@@ -203,56 +250,128 @@ function AdvanceTracker({ userPermissions }) {
         </button>
       </form>
 
+      {/* Month Filter Bar */}
+      <div style={monthFilterBar}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <Filter size={16} color="#64748b" />
+          <span style={{ fontSize: '13px', fontWeight: '700', color: '#334155' }}>Filter Month:</span>
+
+          {/* Quick Current Month Button */}
+          <button
+            type="button"
+            onClick={() => setSelectedMonth(currentMonth)}
+            style={{
+              ...filterPill,
+              backgroundColor: isCurrentMonth ? '#0f172a' : '#ffffff',
+              color: isCurrentMonth ? '#ffffff' : '#64748b',
+              borderColor: isCurrentMonth ? '#0f172a' : '#cbd5e1',
+              fontWeight: isCurrentMonth ? '700' : '500'
+            }}
+          >
+            Current Month
+          </button>
+
+          {/* Month Selector Input */}
+          <div style={monthInputWrapper}>
+            <input
+              type="month"
+              value={selectedMonth === 'all' ? '' : selectedMonth}
+              onChange={e => {
+                if (e.target.value) setSelectedMonth(e.target.value);
+              }}
+              style={monthInput}
+            />
+          </div>
+
+          {/* All Months Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setSelectedMonth('all')}
+            style={{
+              ...filterPill,
+              backgroundColor: selectedMonth === 'all' ? '#2563eb' : '#ffffff',
+              color: selectedMonth === 'all' ? '#ffffff' : '#64748b',
+              borderColor: selectedMonth === 'all' ? '#2563eb' : '#cbd5e1',
+              fontWeight: selectedMonth === 'all' ? '700' : '500'
+            }}
+          >
+            All Months
+          </button>
+        </div>
+
+        {/* Selected Month Summary */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <div style={{ fontSize: '13px', color: '#64748b' }}>
+            Period: <span style={{ color: '#0f172a', fontWeight: '700' }}>{getMonthLabel()}</span>
+          </div>
+          <div style={totalBadge}>
+            Total: <span style={{ color: '#ef4444', fontWeight: '800', marginLeft: '4px' }}>₹{totalMonthAdvance.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      </div>
+
       {/* History Table */}
       <div style={tableContainer}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <h3 style={{ margin: 0, fontSize: '16px' }}>Recent Records</h3>
-          <span style={{ fontSize: '12px', color: '#666' }}>Showing {visibleAdvances.length} entries</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <h3 style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: '700' }}>{getMonthLabel()}</h3>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Showing {visibleAdvances.length} entries</span>
         </div>
 
         {visibleAdvances.length > 0 ? (
-          <table style={tableStyle}>
-            <thead>
-              <tr style={headerRow}>
-                <th style={thStyle}>DATE</th>
-                <th style={thStyle}>NAME</th>
-                <th style={thStyle}>SHOP</th>
-                <th style={thStyle}>AMOUNT</th>
-                <th style={thStyle}>NOTES</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleAdvances.map(adv => (
-                <tr key={adv.id} style={trStyle}>
-                  <td style={tdStyle}>{adv.date}</td>
-                  <td style={{ ...tdStyle, fontWeight: '500', color: '#fff' }}>{adv.employeeName}</td>
-                  <td style={tdStyle}>{adv.dept}</td>
-                  <td style={{ ...tdStyle, color: '#ff6b6b', fontWeight: 'bold' }}>₹{adv.amount}</td>
-                  <td style={{ ...tdStyle, color: adv.notes ? '#ccc' : '#555', fontStyle: adv.notes ? 'normal' : 'italic' }}>
-                    {adv.notes || 'No notes'}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: 'center' }}>
-                    <button
-                      onClick={() => setConfirmModal({
-                        isOpen: true,
-                        adv,
-                        title: `Archive Advance Record?`,
-                        message: `Archive advance of ₹${adv.amount} for ${adv.employeeName} on ${adv.date}? This safely archives the entry without permanent database deletion.`
-                      })}
-                      style={iconBtnStyle}
-                      title="Archive Advance (Safe)"
-                    >
-                      <Archive size={15} color="#ff8533" />
-                    </button>
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRow}>
+                  <th style={thStyle}>DATE</th>
+                  <th style={thStyle}>EMP ID</th>
+                  <th style={thStyle}>NAME</th>
+                  <th style={thStyle}>SHOP</th>
+                  <th style={thStyle}>AMOUNT</th>
+                  <th style={thStyle}>NOTES</th>
+                  <th style={{ ...thStyle, textAlign: 'center' }}>ACTION</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {visibleAdvances.map(adv => {
+                  const empCode = adv.employeeCode || empMap.get(adv.employeeId)?.employeeId || '—';
+                  return (
+                    <tr key={adv.id} style={trStyle}>
+                      <td style={tdStyle}>{adv.date}</td>
+                      <td style={{ ...tdStyle, color: '#2563eb', fontFamily: 'monospace', fontSize: '12px', fontWeight: '700' }}>
+                        {empCode}
+                      </td>
+                      <td style={{ ...tdStyle, fontWeight: '600', color: '#0f172a' }}>{adv.employeeName}</td>
+                      <td style={tdStyle}>{adv.dept}</td>
+                      <td style={{ ...tdStyle, color: '#ef4444', fontWeight: '700' }}>₹{adv.amount.toLocaleString()}</td>
+                      <td style={{ ...tdStyle, color: adv.notes ? '#475569' : '#94a3b8', fontStyle: adv.notes ? 'normal' : 'italic' }}>
+                        {adv.notes || 'No notes'}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'center' }}>
+                        <button
+                          onClick={() => setConfirmModal({
+                            isOpen: true,
+                            adv,
+                            title: `Archive Advance Record?`,
+                            message: `Archive advance of ₹${adv.amount} for ${adv.employeeName} on ${adv.date}? This safely archives the entry without permanent database deletion.`
+                          })}
+                          style={iconBtnStyle}
+                          title="Archive Advance (Safe)"
+                        >
+                          <Archive size={15} color="#ea580c" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-            No advance records found.
+          <div style={{ textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
+            <p style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: '600', color: '#334155' }}>No advance records found for {getMonthLabel()}.</p>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+              Select a different month above, click "All Months" to view past history, or add a new advance using the form above.
+            </p>
           </div>
         )}
       </div>
@@ -273,19 +392,71 @@ function AdvanceTracker({ userPermissions }) {
 }
 
 // Styles
-const formStyle = { display: 'flex', gap: '15px', backgroundColor: '#111', padding: '20px', borderRadius: '12px', border: '1px solid #222', marginBottom: '30px', flexWrap: 'wrap' };
-const inputGroup = { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#000', border: '1px solid #333', padding: '10px 15px', borderRadius: '8px', flex: 1, minWidth: '200px' };
-const innerInput = { background: 'none', border: 'none', color: '#fff', width: '100%', outline: 'none', fontSize: '13px' };
-const selectStyle = { ...innerInput, appearance: 'none', backgroundColor: '#000', cursor: 'pointer' };
-const optionStyle = { backgroundColor: '#1a1a1a', color: '#fff' };
-const addBtn = { backgroundColor: '#fff', color: '#000', border: 'none', padding: '10px 25px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' };
-const exportBtnStyle = { backgroundColor: '#222', color: '#fff', border: '1px solid #333', padding: '10px 18px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' };
-const tableContainer = { backgroundColor: '#111', borderRadius: '12px', border: '1px solid #222', padding: '20px' };
-const tableStyle = { width: '100%', borderCollapse: 'collapse', marginTop: '10px' };
-const headerRow = { textAlign: 'left', borderBottom: '1px solid #333' };
-const thStyle = { padding: '15px', color: '#666', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' };
-const trStyle = { borderBottom: '1px solid #1a1a1a' };
-const tdStyle = { padding: '15px', fontSize: '13px', color: '#ccc' };
-const iconBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
+const formStyle = { display: 'flex', gap: '15px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '22px', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const inputGroup = { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', flex: 1, minWidth: '200px' };
+const innerInput = { background: 'none', border: 'none', color: '#0f172a', width: '100%', outline: 'none', fontSize: '13px' };
+const selectStyle = { ...innerInput, appearance: 'none', backgroundColor: '#ffffff', cursor: 'pointer' };
+const optionStyle = { backgroundColor: '#ffffff', color: '#0f172a' };
+const addBtn = { backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '10px 22px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '13px', boxShadow: '0 2px 4px rgba(15, 23, 42, 0.15)' };
+const exportBtnStyle = { backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px 18px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' };
+
+const monthFilterBar = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  backgroundColor: '#ffffff',
+  padding: '14px 20px',
+  borderRadius: '14px',
+  border: '1px solid #e2e8f0',
+  marginBottom: '22px',
+  flexWrap: 'wrap',
+  gap: '15px',
+  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+};
+
+const filterPill = {
+  border: '1px solid #cbd5e1',
+  padding: '6px 14px',
+  borderRadius: '20px',
+  fontSize: '12px',
+  cursor: 'pointer',
+  transition: '0.2s'
+};
+
+const monthInputWrapper = {
+  backgroundColor: '#ffffff',
+  border: '1px solid #cbd5e1',
+  padding: '4px 10px',
+  borderRadius: '8px',
+  display: 'flex',
+  alignItems: 'center'
+};
+
+const monthInput = {
+  background: 'none',
+  border: 'none',
+  color: '#0f172a',
+  fontSize: '12px',
+  outline: 'none',
+  cursor: 'pointer',
+  colorScheme: 'light'
+};
+
+const totalBadge = {
+  backgroundColor: '#f8fafc',
+  border: '1px solid #e2e8f0',
+  padding: '6px 14px',
+  borderRadius: '8px',
+  fontSize: '13px',
+  color: '#334155'
+};
+
+const tableContainer = { backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '22px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const tableStyle = { width: '100%', borderCollapse: 'collapse' };
+const headerRow = { textAlign: 'left', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' };
+const thStyle = { padding: '12px 16px', color: '#64748b', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' };
+const trStyle = { borderBottom: '1px solid #f1f5f9' };
+const tdStyle = { padding: '14px 16px', fontSize: '13px', color: '#334155' };
+const iconBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
 
 export default AdvanceTracker;
