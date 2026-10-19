@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search } from 'lucide-react';
+import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, LifeBuoy } from 'lucide-react';
+import { notifyLogin } from './services/telegramService';
+import ContactDevModal from './components/ContactDevModal';
 
 // Import the pages
 import Dashboard from './pages/Dashboard';
@@ -33,6 +35,7 @@ function App() {
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
+  const [showContactDev, setShowContactDev] = useState(false);
 
   const toggleSidebar = () => {
     setCollapsed(prev => {
@@ -46,6 +49,14 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthLoading(false);
+      if (u && u.email) {
+        const norm = u.email.toLowerCase().trim();
+        let shopTitle = 'RANI MIS';
+        if (norm === 'javuli@rani.com') shopTitle = 'RANI JAVULI';
+        else if (norm === 'readymade@rani.com' || norm === 'readymades@rani.com') shopTitle = 'RANI READYMADES';
+        else if (norm === 'newrani@rani.com') shopTitle = 'NEW RANI';
+        notifyLogin({ email: u.email, dept: shopTitle });
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -198,18 +209,37 @@ function App() {
               </NavLink>
             </div>
             <button
+              onClick={() => setShowContactDev(true)}
+              style={{
+                ...contactDevBtn,
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                gap: collapsed ? '0' : '10px',
+                padding: collapsed ? '14px 0' : '14px 24px'
+              }}
+              title="Contact Developer"
+            >
+              <LifeBuoy size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Contact Dev</span>}
+            </button>
+            <button
               onClick={() => signOut(auth)}
               style={{
                 ...logoutBtn,
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 gap: collapsed ? '0' : '10px',
-                padding: collapsed ? '20px 0' : '20px 24px'
+                padding: collapsed ? '16px 0' : '16px 24px'
               }}
               title="Logout"
             >
               <LogOut size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Logout</span>}
             </button>
           </nav>
+
+          <ContactDevModal
+            isOpen={showContactDev}
+            onClose={() => setShowContactDev(false)}
+            userEmail={user.email}
+            userDept={getSidebarTitle()}
+          />
 
           {/* MAIN CONTENT AREA */}
           <main style={{ flex: 1, padding: '32px', overflowY: 'auto', backgroundColor: '#f8fafc' }}>
@@ -286,6 +316,7 @@ const sidebarStyle = { backgroundColor: '#ffffff', borderRight: '1px solid #e2e8
 const menuList = { display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 };
 const navLink = { color: '#64748b', textDecoration: 'none', padding: '10px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', fontWeight: '500', transition: 'all 0.2s ease' };
 const navLinkActive = { color: '#15803d', backgroundColor: '#f0fdf4', fontWeight: '600', borderLeft: '3px solid #16a34a', paddingLeft: '11px' };
+const contactDevBtn = { border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', borderTop: '1px solid #f1f5f9', fontSize: '13px', fontWeight: '600', transition: '0.2s' };
 const logoutBtn = { border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', borderTop: '1px solid #f1f5f9', fontSize: '14px', fontWeight: '600', transition: '0.2s' };
 
 const loginInputStyle = { width: '100%', padding: '12px 14px', marginBottom: '16px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
