@@ -23,7 +23,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "electron:serve": "concurrently -k \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "cross-env PUBLIC_URL=./ npm run build && electron-builder"
   },
   "eslintConfig": {
     "extends": [
@@ -43,7 +43,7 @@
       "last 1 safari version"
     ]
   },
-  "homepage": "./",
+  "homepage": "/",
   "main": "public/electron.js",
   "build": {
     "appId": "com.ranisalary.app",
