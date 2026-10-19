@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { Search, Download, IndianRupee, Calendar, User, Building2, RefreshCw, FileSpreadsheet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Search, Download, Calendar, User, Building2, RefreshCw, FileSpreadsheet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
 const MONTHS = [
@@ -21,10 +21,13 @@ function Search360({ userPermissions }) {
   const [advances, setAdvances] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const currentMonthName = MONTHS[new Date().getMonth()];
+  const currentYear = new Date().getFullYear().toString();
+
   // Filters
   const [selectedPerson, setSelectedPerson] = useState('All'); // 'All' or emp.id or emp.employeeId
-  const [selectedMonth, setSelectedMonth] = useState('All'); // 'All' or month name e.g. 'August'
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString()); // 'All' or '2026'
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthName); // Default to this month
+  const [selectedYear, setSelectedYear] = useState(currentYear); // Default to this year
   const [selectedDept, setSelectedDept] = useState(isAdmin ? 'All' : defaultDept);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'salary' | 'advance'
@@ -249,10 +252,6 @@ function Search360({ userPermissions }) {
     return filteredAdvances.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
   }, [filteredAdvances]);
 
-  const totalAdvanceDeductedInSalaries = useMemo(() => {
-    return filteredSalaries.reduce((sum, s) => sum + (Number(s.advance) || 0), 0);
-  }, [filteredSalaries]);
-
   // Export to CSV
   const handleExportCSV = () => {
     if (displayRecords.length === 0) {
@@ -312,18 +311,17 @@ function Search360({ userPermissions }) {
 
   const handleResetFilters = () => {
     setSelectedPerson('All');
-    setSelectedMonth('All');
+    setSelectedMonth(MONTHS[new Date().getMonth()]);
     setSelectedYear(new Date().getFullYear().toString());
     setSelectedDept(isAdmin ? 'All' : defaultDept);
     setSearchTerm('');
     setActiveTab('all');
   };
 
-  const currentYear = new Date().getFullYear();
   const yearOptions = [
-    String(currentYear - 1),
+    String(Number(currentYear) - 1),
     String(currentYear),
-    String(currentYear + 1)
+    String(Number(currentYear) + 1)
   ];
 
   return (
@@ -448,32 +446,6 @@ function Search360({ userPermissions }) {
             ₹{totalAdvancesGiven.toLocaleString('en-IN')}
           </div>
           <div style={metricSub}>Across {filteredAdvances.length} advance record(s)</div>
-        </div>
-
-        <div style={metricCard}>
-          <div style={metricHeader}>
-            <span style={metricTitle}>ADVANCE DEDUCTED IN SALARY</span>
-            <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#fffbeb' }}>
-              <IndianRupee size={18} color="#d97706" />
-            </div>
-          </div>
-          <div style={{ ...metricValue, color: '#d97706' }}>
-            ₹{totalAdvanceDeductedInSalaries.toLocaleString('en-IN')}
-          </div>
-          <div style={metricSub}>Recovered from payroll</div>
-        </div>
-
-        <div style={metricCard}>
-          <div style={metricHeader}>
-            <span style={metricTitle}>TOTAL 360 RECORDS</span>
-            <div style={{ padding: '6px', borderRadius: '6px', backgroundColor: '#eff6ff' }}>
-              <FileSpreadsheet size={18} color="#2563eb" />
-            </div>
-          </div>
-          <div style={{ ...metricValue, color: '#2563eb' }}>
-            {combinedRecords.length}
-          </div>
-          <div style={metricSub}>{filteredSalaries.length} Salaries + {filteredAdvances.length} Advances</div>
         </div>
       </div>
 
@@ -722,7 +694,7 @@ const exportBtn = {
 
 const metricsGrid = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
   gap: '16px',
   marginBottom: '22px'
 };
