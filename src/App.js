@@ -11,6 +11,9 @@ import AdvanceTracker from './pages/AdvanceTracker';
 import SalaryProcessor from './pages/SalaryProcessor';
 import ReportPreview from './pages/ReportPreview';
 import Search360 from './pages/Search360';
+import NotFound from './pages/NotFound';
+import AccessDenied from './components/AccessDenied';
+import ErrorBoundary from './components/ErrorBoundary';
 import logoRani from './logo_rani.png';
 import { ToastProvider } from './components/Toast';
 
@@ -50,8 +53,37 @@ function App() {
   // Show clean loading state while Firebase resolves the auth state
   if (authLoading) {
     return (
-      <div style={{ backgroundColor: '#f8fafc', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#64748b', fontSize: '15px', fontWeight: '500' }}>
-        Loading…
+      <div style={{
+        backgroundColor: '#f8fafc',
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '16px',
+        color: '#64748b',
+        fontFamily: "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif"
+      }}>
+        {logoRani && (
+          <img src={logoRani} alt="Rani Logo" style={{ width: '180px', height: 'auto', opacity: 0.9 }} />
+        )}
+        <div style={{
+          width: '28px',
+          height: '28px',
+          border: '3px solid #e2e8f0',
+          borderTopColor: '#0f172a',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite'
+        }} />
+        <div style={{ fontSize: '13px', fontWeight: '600', color: '#94a3b8' }}>
+          Loading application…
+        </div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     );
   }
@@ -63,6 +95,11 @@ function App() {
   // Derive the user's permission set (default to empty if email not in PERMISSIONS)
   const normalizedEmail = user.email ? user.email.toLowerCase().trim() : '';
   const userPermissions = PERMISSIONS[normalizedEmail] || { depts: [], canEdit: false };
+
+  // If user is authenticated but has no department permissions assigned
+  if (!userPermissions.depts || userPermissions.depts.length === 0) {
+    return <AccessDenied email={user.email} />;
+  }
 
   const getSidebarTitle = () => {
     if (normalizedEmail === 'javuli@rani.com') return 'RANI JAVULI';
@@ -176,14 +213,17 @@ function App() {
 
           {/* MAIN CONTENT AREA */}
           <main style={{ flex: 1, padding: '32px', overflowY: 'auto', backgroundColor: '#f8fafc' }}>
-            <Routes>
-              <Route path="/" element={<Dashboard userPermissions={userPermissions} />} />
-              <Route path="/employees" element={<EmployeeRegistry userPermissions={userPermissions} />} />
-              <Route path="/advance" element={<AdvanceTracker userPermissions={userPermissions} />} />
-              <Route path="/salary" element={<SalaryProcessor userPermissions={userPermissions} />} />
-              <Route path="/reports" element={<ReportPreview userPermissions={userPermissions} />} />
-              <Route path="/search-360" element={<Search360 userPermissions={userPermissions} />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<Dashboard userPermissions={userPermissions} />} />
+                <Route path="/employees" element={<EmployeeRegistry userPermissions={userPermissions} />} />
+                <Route path="/advance" element={<AdvanceTracker userPermissions={userPermissions} />} />
+                <Route path="/salary" element={<SalaryProcessor userPermissions={userPermissions} />} />
+                <Route path="/reports" element={<ReportPreview userPermissions={userPermissions} />} />
+                <Route path="/search-360" element={<Search360 userPermissions={userPermissions} />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </ErrorBoundary>
           </main>
         </div>
       </Router>
