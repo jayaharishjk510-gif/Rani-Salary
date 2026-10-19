@@ -221,7 +221,10 @@ function App() {
               <LifeBuoy size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Contact Dev</span>}
             </button>
             <button
-              onClick={() => signOut(auth)}
+              onClick={() => {
+                sessionStorage.clear();
+                signOut(auth);
+              }}
               style={{
                 ...logoutBtn,
                 justifyContent: collapsed ? 'center' : 'flex-start',
@@ -274,6 +277,7 @@ function LoginScreen() {
     setLoading(true);
     setError('');
     try {
+      sessionStorage.clear();
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
       setError(err.message);
