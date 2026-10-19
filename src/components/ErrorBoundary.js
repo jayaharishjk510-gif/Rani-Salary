@@ -1,5 +1,6 @@
 import React from 'react';
-import { AlertTriangle, RefreshCw, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Send } from 'lucide-react';
+import { notifyErrorReport } from '../services/telegramService';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -8,7 +9,9 @@ class ErrorBoundary extends React.Component {
       hasError: false,
       error: null,
       errorInfo: null,
-      showDetails: false
+      showDetails: false,
+      reporting: false,
+      reported: false
     };
   }
 
@@ -36,7 +39,22 @@ class ErrorBoundary extends React.Component {
   };
 
   handleResetError = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState({ hasError: false, error: null, errorInfo: null, reporting: false, reported: false });
+  };
+
+  handleReportToDev = async () => {
+    if (this.state.reporting || this.state.reported) return;
+    this.setState({ reporting: true });
+    try {
+      await notifyErrorReport({
+        error: this.state.error,
+        errorInfo: this.state.errorInfo
+      });
+      this.setState({ reported: true, reporting: false });
+    } catch (e) {
+      console.error('Error reporting to dev:', e);
+      this.setState({ reporting: false });
+    }
   };
 
   toggleDetails = () => {
@@ -173,6 +191,29 @@ class ErrorBoundary extends React.Component {
                 }}
               >
                 Clear Cache & Restart
+              </button>
+
+              <button
+                onClick={this.handleReportToDev}
+                disabled={this.state.reporting || this.state.reported}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: this.state.reported ? '#f0fdf4' : '#2563eb',
+                  color: this.state.reported ? '#16a34a' : '#ffffff',
+                  border: this.state.reported ? '1px solid #bbf7d0' : 'none',
+                  borderRadius: '10px',
+                  padding: '12px 18px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: (this.state.reporting || this.state.reported) ? 'default' : 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: this.state.reported ? 'none' : '0 4px 6px -1px rgba(37, 99, 235, 0.25)'
+                }}
+              >
+                <Send size={15} />
+                {this.state.reported ? 'Report Sent to Dev ✓' : this.state.reporting ? 'Sending to Dev…' : 'Report Issue to Developer'}
               </button>
             </div>
 
