@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, LifeBuoy } from 'lucide-react';
+import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, Download } from 'lucide-react';
 import { notifyLogin } from './services/telegramService';
-import ContactDevModal from './components/ContactDevModal';
+import NetworkStatus from './components/NetworkStatus';
+import PWAUpdateToast from './components/PWAUpdateToast';
+import PWAInstallPrompt, { usePWAInstall } from './components/PWAInstallPrompt';
 
 // Import the pages
 import Dashboard from './pages/Dashboard';
@@ -35,7 +37,7 @@ function App() {
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
-  const [showContactDev, setShowContactDev] = useState(false);
+  const { canInstall, triggerInstall } = usePWAInstall();
 
   const toggleSidebar = () => {
     setCollapsed(prev => {
@@ -100,7 +102,14 @@ function App() {
   }
 
   if (!user) {
-    return <LoginScreen />;
+    return (
+      <>
+        <LoginScreen />
+        <NetworkStatus />
+        <PWAUpdateToast />
+        <PWAInstallPrompt />
+      </>
+    );
   }
 
   // Derive the user's permission set (default to empty if email not in PERMISSIONS)
@@ -122,13 +131,18 @@ function App() {
   return (
     <ToastProvider>
       <Router>
-        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc', color: '#0f172a' }}>
+        <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f8fafc', color: '#0f172a' }}>
 
-          {/* SIDEBAR MENU */}
+          {/* STATIC SIDEBAR MENU */}
           <nav style={{
             ...sidebarStyle,
             width: collapsed ? '72px' : '255px',
+            height: '100vh',
+            maxHeight: '100vh',
             transition: 'width 0.25s ease',
+            display: 'flex',
+            flexDirection: 'column',
+            flexShrink: 0,
             overflow: 'hidden'
           }}>
             <div style={{
@@ -139,7 +153,8 @@ function App() {
               justifyContent: collapsed ? 'center' : 'space-between',
               gap: '12px',
               minHeight: '66px',
-              boxSizing: 'border-box'
+              boxSizing: 'border-box',
+              flexShrink: 0
             }}>
               {!collapsed ? (
                 <>
@@ -208,44 +223,54 @@ function App() {
                 <Search size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>360 Search</span>}
               </NavLink>
             </div>
-            <button
-              onClick={() => setShowContactDev(true)}
-              style={{
-                ...contactDevBtn,
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                gap: collapsed ? '0' : '10px',
-                padding: collapsed ? '14px 0' : '14px 24px'
-              }}
-              title="Contact Developer"
-            >
-              <LifeBuoy size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Contact Dev</span>}
-            </button>
-            <button
-              onClick={() => {
-                sessionStorage.clear();
-                signOut(auth);
-              }}
-              style={{
-                ...logoutBtn,
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                gap: collapsed ? '0' : '10px',
-                padding: collapsed ? '16px 0' : '16px 24px'
-              }}
-              title="Logout"
-            >
-              <LogOut size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Logout</span>}
-            </button>
+            {/* STATIC PINNED BOTTOM ACTIONS */}
+            <div style={{
+              marginTop: 'auto',
+              flexShrink: 0,
+              borderTop: '1px solid #f1f5f9',
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#ffffff'
+            }}>
+              {canInstall && (
+                <button
+                  onClick={triggerInstall}
+                  style={{
+                    ...installBtn,
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    gap: collapsed ? '0' : '10px',
+                    padding: collapsed ? '14px 0' : '14px 24px'
+                  }}
+                  title="Install Rani Salary App"
+                >
+                  <Download size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Install App</span>}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  sessionStorage.clear();
+                  signOut(auth);
+                }}
+                style={{
+                  ...logoutBtn,
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  gap: collapsed ? '0' : '10px',
+                  padding: collapsed ? '16px 0' : '16px 24px',
+                  borderTop: canInstall ? '1px solid #f1f5f9' : 'none'
+                }}
+                title="Logout"
+              >
+                <LogOut size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Logout</span>}
+              </button>
+            </div>
           </nav>
 
-          <ContactDevModal
-            isOpen={showContactDev}
-            onClose={() => setShowContactDev(false)}
-            userEmail={user.email}
-            userDept={getSidebarTitle()}
-          />
+          <NetworkStatus />
+          <PWAUpdateToast />
+          <PWAInstallPrompt />
 
           {/* MAIN CONTENT AREA */}
-          <main style={{ flex: 1, padding: '32px', overflowY: 'auto', backgroundColor: '#f8fafc' }}>
+          <main style={{ flex: 1, height: '100vh', overflowY: 'auto', padding: '32px', backgroundColor: '#f8fafc', boxSizing: 'border-box' }}>
             <ErrorBoundary>
               <Routes>
                 <Route path="/" element={<Dashboard userPermissions={userPermissions} />} />
@@ -317,11 +342,11 @@ function LoginScreen() {
 
 // Styles
 const sidebarStyle = { backgroundColor: '#ffffff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', boxShadow: '2px 0 8px rgba(0, 0, 0, 0.02)' };
-const menuList = { display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 };
-const navLink = { color: '#64748b', textDecoration: 'none', padding: '10px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', fontWeight: '500', transition: 'all 0.2s ease' };
+const menuList = { display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto', minHeight: 0 };
+const navLink = { color: '#64748b', textDecoration: 'none', padding: '10px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', fontWeight: '500', transition: 'all 0.2s ease', flexShrink: 0 };
 const navLinkActive = { color: '#15803d', backgroundColor: '#f0fdf4', fontWeight: '600', borderLeft: '3px solid #16a34a', paddingLeft: '11px' };
-const contactDevBtn = { border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', borderTop: '1px solid #f1f5f9', fontSize: '13px', fontWeight: '600', transition: '0.2s' };
-const logoutBtn = { border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', borderTop: '1px solid #f1f5f9', fontSize: '14px', fontWeight: '600', transition: '0.2s' };
+const installBtn = { border: 'none', background: 'none', color: '#047857', cursor: 'pointer', display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: '600', transition: '0.2s', width: '100%' };
+const logoutBtn = { border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', fontSize: '14px', fontWeight: '600', transition: '0.2s', width: '100%' };
 
 const loginInputStyle = { width: '100%', padding: '12px 14px', marginBottom: '16px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
 const loginBtnStyle = { width: '100%', padding: '13px', backgroundColor: '#0f172a', color: '#fff', border: 'none', fontWeight: '700', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', transition: 'background-color 0.2s', boxShadow: '0 4px 6px -1px rgba(15, 23, 42, 0.15)' };
