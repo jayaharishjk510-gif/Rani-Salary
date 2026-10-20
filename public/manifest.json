@@ -1,6 +1,15 @@
 {
   "short_name": "Rani Salary",
-  "name": "Rani Salary",
+  "name": "Rani Salary Management",
+  "description": "Salary, Advance, and Staff Management System for Rani Stores",
+  "id": "/?source=pwa",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0f172a",
+  "background_color": "#f8fafc",
+  "lang": "en",
   "icons": [
     {
       "src": "favicon.png",
@@ -10,16 +19,61 @@
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
     },
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "shortcuts": [
+    {
+      "name": "Salary Entry",
+      "short_name": "Salary",
+      "description": "Quickly access salary entry and processing",
+      "url": "/salary",
+      "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Advance Register",
+      "short_name": "Advance",
+      "description": "Record and manage employee advances",
+      "url": "/advance",
+      "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "360 Search",
+      "short_name": "Search",
+      "description": "Search employee salary and advance history",
+      "url": "/search-360",
+      "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Employee Registry",
+      "short_name": "Employees",
+      "description": "View and manage active employees",
+      "url": "/employees",
+      "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
+    }
+  ]
 }
