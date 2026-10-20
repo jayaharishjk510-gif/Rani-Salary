@@ -12,6 +12,13 @@ function SalaryProcessor({ userPermissions }) {
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, record: null });
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Compute live month and year INSIDE the component so they always reflect current time
   const now = useMemo(() => new Date(), []);
@@ -222,19 +229,43 @@ function SalaryProcessor({ userPermissions }) {
   };
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 120px)', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: isMobile ? 'auto' : 'calc(100vh - 120px)', gap: '20px' }}>
       {/* Hide scrollbars */}
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
-      <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }} className="no-scrollbar">
-        <div style={headerRow}>
+      <div style={{ flex: 1, overflowY: isMobile ? 'visible' : 'auto', paddingRight: isMobile ? '0' : '10px' }} className="no-scrollbar">
+        {/* Mobile Employee Selector */}
+        {isMobile && (
+          <div style={{ marginBottom: '16px', backgroundColor: '#ffffff', padding: '14px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Select Employee ({visibleEmployees.length})
+            </label>
+            <select
+              value={selectedEmpId}
+              onChange={e => setSelectedEmpId(e.target.value)}
+              style={{ ...selectStyle, width: '100%', padding: '12px 14px', fontSize: '14px', fontWeight: '600' }}
+            >
+              <option value="">-- Choose Employee --</option>
+              {visibleEmployees.map(emp => {
+                const isProcessed = visibleSalaryRecords.some(r => r.employeeId === emp.id);
+                return (
+                  <option key={emp.id} value={emp.id}>
+                    {isProcessed ? '✓ ' : '• '}{emp.employeeId ? `[${emp.employeeId}] ` : ''}{emp.name} ({emp.dept})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        )}
+
+        <div style={{ ...headerRow, flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h2 style={{ fontSize: '24px', margin: 0, color: '#0f172a', fontWeight: '800' }}>Salary Entry</h2>
             <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
-              {selectedEmp ? `Calculating for: ${selectedEmp.name}${selectedEmp.employeeId ? ` [${selectedEmp.employeeId}]` : ''} (${selectedEmp.dept})` : 'Select an employee from the right panel'}
+              {selectedEmp ? `Calculating for: ${selectedEmp.name}${selectedEmp.employeeId ? ` [${selectedEmp.employeeId}]` : ''} (${selectedEmp.dept})` : (isMobile ? 'Select an employee above to start' : 'Select an employee from the right panel')}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -247,7 +278,7 @@ function SalaryProcessor({ userPermissions }) {
           </div>
         </div>
 
-        <div style={gridContainer}>
+        <div style={{ ...gridContainer, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
           <div style={sectionBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', paddingBottom: '8px', borderBottom: '1px solid #e2e8f0' }}>
               <span style={{ color: '#166534', fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px' }}>EARNINGS</span>
@@ -299,7 +330,12 @@ function SalaryProcessor({ userPermissions }) {
           </div>
         </div>
 
-        <div style={summaryBox}>
+        <div style={{
+          ...summaryBox,
+          flexDirection: isMobile ? 'column' : 'row',
+          alignItems: isMobile ? 'stretch' : 'center',
+          gap: isMobile ? '16px' : '20px'
+        }}>
           <div>
             <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.6px', fontWeight: '700' }}>TOTAL NET PAYABLE</div>
             <div style={totalVal}>₹{gTotal}</div>
@@ -310,7 +346,9 @@ function SalaryProcessor({ userPermissions }) {
             style={{
               ...saveBtn,
               opacity: (!selectedEmpId || saving) ? 0.5 : 1,
-              cursor: (!selectedEmpId || saving) ? 'not-allowed' : 'pointer'
+              cursor: (!selectedEmpId || saving) ? 'not-allowed' : 'pointer',
+              width: isMobile ? '100%' : 'auto',
+              justifyContent: 'center'
             }}
           >
             <Save size={18}/> {saving ? 'Saving Record…' : 'Save Record'}
@@ -365,33 +403,35 @@ function SalaryProcessor({ userPermissions }) {
         </div>
       </div>
 
-      {/* RIGHT SIDEBAR */}
-      <div style={rightSidebar}>
-        <h4 style={{ fontSize: '14px', margin: '0 0 14px 0', color: '#0f172a', fontWeight: '700' }}>Select Employee</h4>
-        <div style={scrollList} className="no-scrollbar">
-          {visibleEmployees.map(emp => {
-            const isDone = visibleSalaryRecords.some(r => r.employeeId === emp.id);
-            const isSelected = selectedEmpId === emp.id;
-            return (
-              <div key={emp.id} onClick={() => setSelectedEmpId(emp.id)} style={{
-                ...empItem,
-                backgroundColor: isSelected ? '#f0fdf4' : '#f8fafc',
-                borderLeft: isSelected ? '4px solid #16a34a' : '4px solid transparent',
-                border: isSelected ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
-                borderLeftWidth: '4px'
-              }}>
-                <div style={{ fontSize: '12px', color: isSelected ? '#166534' : '#0f172a', fontWeight: isSelected ? '700' : '500' }}>
-                  {emp.name}
-                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-                    {emp.employeeId ? <span style={{ color: '#2563eb', fontFamily: 'monospace', fontWeight: '600' }}>{emp.employeeId} • </span> : null}{emp.dept}
+      {/* RIGHT SIDEBAR (Desktop Only) */}
+      {!isMobile && (
+        <div style={rightSidebar}>
+          <h4 style={{ fontSize: '14px', margin: '0 0 14px 0', color: '#0f172a', fontWeight: '700' }}>Select Employee</h4>
+          <div style={scrollList} className="no-scrollbar">
+            {visibleEmployees.map(emp => {
+              const isDone = visibleSalaryRecords.some(r => r.employeeId === emp.id);
+              const isSelected = selectedEmpId === emp.id;
+              return (
+                <div key={emp.id} onClick={() => setSelectedEmpId(emp.id)} style={{
+                  ...empItem,
+                  backgroundColor: isSelected ? '#f0fdf4' : '#f8fafc',
+                  borderLeft: isSelected ? '4px solid #16a34a' : '4px solid transparent',
+                  border: isSelected ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                  borderLeftWidth: '4px'
+                }}>
+                  <div style={{ fontSize: '12px', color: isSelected ? '#166534' : '#0f172a', fontWeight: isSelected ? '700' : '500' }}>
+                    {emp.name}
+                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                      {emp.employeeId ? <span style={{ color: '#2563eb', fontFamily: 'monospace', fontWeight: '600' }}>{emp.employeeId} • </span> : null}{emp.dept}
+                    </div>
                   </div>
+                  {isDone ? <CheckCircle size={15} color="#16a34a" /> : <Clock size={15} color="#cbd5e1" />}
                 </div>
-                {isDone ? <CheckCircle size={15} color="#16a34a" /> : <Clock size={15} color="#cbd5e1" />}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Confirmation Modal */}
       <ConfirmModal

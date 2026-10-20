@@ -392,25 +392,25 @@ function AdvanceTracker({ userPermissions }) {
 }
 
 // Styles
-const formStyle = { display: 'flex', gap: '15px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '22px', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
-const inputGroup = { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', flex: 1, minWidth: '200px' };
+const formStyle = { display: 'flex', gap: '12px', backgroundColor: '#ffffff', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '20px', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const inputGroup = { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', flex: '1 1 220px', width: '100%', minWidth: '0' };
 const innerInput = { background: 'none', border: 'none', color: '#0f172a', width: '100%', outline: 'none', fontSize: '13px' };
 const selectStyle = { ...innerInput, appearance: 'none', backgroundColor: '#ffffff', cursor: 'pointer' };
 const optionStyle = { backgroundColor: '#ffffff', color: '#0f172a' };
-const addBtn = { backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '10px 22px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '13px', boxShadow: '0 2px 4px rgba(15, 23, 42, 0.15)' };
-const exportBtnStyle = { backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px 18px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' };
+const addBtn = { backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '12px 22px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '13px', boxShadow: '0 2px 4px rgba(15, 23, 42, 0.15)', flex: '1 1 200px' };
+const exportBtnStyle = { backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px 16px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' };
 
 const monthFilterBar = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   backgroundColor: '#ffffff',
-  padding: '14px 20px',
+  padding: '14px 16px',
   borderRadius: '14px',
   border: '1px solid #e2e8f0',
-  marginBottom: '22px',
+  marginBottom: '20px',
   flexWrap: 'wrap',
-  gap: '15px',
+  gap: '12px',
   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
 };
 

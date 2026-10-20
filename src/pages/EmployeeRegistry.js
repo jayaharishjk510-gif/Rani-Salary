@@ -514,8 +514,8 @@ const deptTag = { fontSize: '12px', color: '#64748b', marginBottom: '14px', font
 const infoRow = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', color: '#475569', marginBottom: '6px' };
 const salaryTag = { marginTop: '12px', fontWeight: '700', color: '#16a34a', fontSize: '13px' };
 const addBtnStyle = { backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 2px 4px rgba(15, 23, 42, 0.15)' };
-const modalOverlay = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
-const modalContent = { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', border: '1px solid #e2e8f0', width: '420px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04)' };
+const modalOverlay = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' };
+const modalContent = { backgroundColor: '#ffffff', padding: '24px 20px', borderRadius: '16px', border: '1px solid #e2e8f0', width: '100%', maxWidth: '420px', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04)' };
 const inputStyle = { padding: '11px 14px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', borderRadius: '8px', fontSize: '13px', outline: 'none' };
 const saveBtn = { padding: '12px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', flex: 1, fontSize: '13px', boxShadow: '0 2px 4px rgba(15, 23, 42, 0.15)' };
 const cancelBtn = { padding: '12px', backgroundColor: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', flex: 1, fontSize: '13px', fontWeight: '600' };
@@ -523,12 +523,12 @@ const nonAdminDeptInfo = { padding: '12px', backgroundColor: '#f8fafc', border: 
 const uploadBtnStyle = { padding: '8px 14px', backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-block', textAlign: 'center' };
 const clearBtnStyle = { padding: '8px 14px', backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
 const iconBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 0.15s' };
-const tabGroupStyle = { display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', border: '1px solid #e2e8f0', gap: '4px' };
+const tabGroupStyle = { display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', border: '1px solid #e2e8f0', gap: '4px', flexWrap: 'wrap' };
 const tabBtnStyle = { border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: '0.2s' };
 const archivedBadgeStyle = { marginTop: '12px', backgroundColor: '#fff7ed', color: '#ea580c', border: '1px solid #ffedd5', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', letterSpacing: '0.8px', display: 'inline-block' };
 const emptyStateStyle = { textAlign: 'center', padding: '50px 20px', color: '#64748b', border: '1px dashed #cbd5e1', borderRadius: '12px', marginTop: '30px', backgroundColor: '#ffffff' };
 const empIdBadgeStyle = { display: 'inline-block', fontSize: '11px', color: '#2563eb', backgroundColor: '#eff6ff', border: '1px solid #dbeafe', padding: '2px 8px', borderRadius: '6px', fontFamily: 'monospace', fontWeight: '700', marginBottom: '6px' };
-const searchBoxStyle = { display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0 12px', height: '40px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)' };
-const searchInputStyle = { background: 'transparent', border: 'none', outline: 'none', color: '#0f172a', fontSize: '13px', width: '180px' };
+const searchBoxStyle = { display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0 12px', height: '40px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)', flex: '1 1 180px' };
+const searchInputStyle = { background: 'transparent', border: 'none', outline: 'none', color: '#0f172a', fontSize: '13px', width: '100%' };
 
 export default EmployeeRegistry;
