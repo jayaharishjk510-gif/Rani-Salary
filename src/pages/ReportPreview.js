@@ -387,8 +387,9 @@ const searchContainer = {
   backgroundColor: '#ffffff',
   border: '1px solid #cbd5e1',
   borderRadius: '8px',
-  flex: 1,
-  minWidth: '250px'
+  flex: '1 1 220px',
+  minWidth: '0',
+  width: '100%'
 };
 
 const searchInput = {

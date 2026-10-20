@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, Download } from 'lucide-react';
+import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, Download, X } from 'lucide-react';
 import { notifyLogin } from './services/telegramService';
 import NetworkStatus from './components/NetworkStatus';
 import PWAUpdateToast from './components/PWAUpdateToast';
@@ -38,6 +38,18 @@ function App() {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
   const { canInstall, triggerInstall } = usePWAInstall();
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (!mobile) setMobileMenuOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const toggleSidebar = () => {
     setCollapsed(prev => {
@@ -131,10 +143,133 @@ function App() {
   return (
     <ToastProvider>
       <Router>
-        <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f8fafc', color: '#0f172a' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          height: '100vh',
+          width: '100vw',
+          overflow: 'hidden',
+          backgroundColor: '#f8fafc',
+          color: '#0f172a'
+        }}>
 
-          {/* STATIC SIDEBAR MENU */}
-          <nav style={{
+          {/* MOBILE TOP APP BAR */}
+          {isMobile && (
+            <header style={{
+              height: '56px',
+              backgroundColor: '#ffffff',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 16px',
+              flexShrink: 0,
+              zIndex: 100,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                <button
+                  onClick={() => setMobileMenuOpen(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#0f172a',
+                    cursor: 'pointer',
+                    padding: '8px',
+                    marginLeft: '-8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '8px'
+                  }}
+                  title="Open Navigation"
+                  aria-label="Open Navigation"
+                >
+                  <Menu size={22} />
+                </button>
+                <span style={{ fontWeight: '800', fontSize: '15px', textTransform: 'uppercase', color: '#0f172a', letterSpacing: '0.4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {getSidebarTitle()}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                {canInstall && (
+                  <button
+                    onClick={triggerInstall}
+                    style={{
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      color: '#16a34a',
+                      cursor: 'pointer',
+                      padding: '6px 10px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '12px',
+                      fontWeight: '700'
+                    }}
+                    title="Install App"
+                  >
+                    <Download size={14} /> Install
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    sessionStorage.clear();
+                    signOut(auth);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    padding: '8px',
+                    marginRight: '-8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '8px'
+                  }}
+                  title="Logout"
+                  aria-label="Logout"
+                >
+                  <LogOut size={19} />
+                </button>
+              </div>
+            </header>
+          )}
+
+          {/* MOBILE SLIDE-OVER DRAWER BACKDROP */}
+          {isMobile && mobileMenuOpen && (
+            <div
+              onClick={() => setMobileMenuOpen(false)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                backgroundColor: 'rgba(15, 23, 42, 0.55)',
+                backdropFilter: 'blur(3px)',
+                zIndex: 9998
+              }}
+            />
+          )}
+
+          {/* SIDEBAR NAVIGATION (DRAWER ON MOBILE, STATIC ON DESKTOP) */}
+          <nav style={isMobile ? {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: '280px',
+            maxWidth: '85vw',
+            backgroundColor: '#ffffff',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '4px 0 24px rgba(0, 0, 0, 0.15)',
+            transform: mobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
+            transition: 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+            visibility: mobileMenuOpen ? 'visible' : 'hidden'
+          } : {
             ...sidebarStyle,
             width: collapsed ? '72px' : '255px',
             height: '100vh',
@@ -150,13 +285,26 @@ function App() {
               borderBottom: '1px solid #f1f5f9',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'space-between',
+              justifyContent: isMobile ? 'space-between' : (collapsed ? 'center' : 'space-between'),
               gap: '12px',
               minHeight: '66px',
               boxSizing: 'border-box',
               flexShrink: 0
             }}>
-              {!collapsed ? (
+              {isMobile ? (
+                <>
+                  <span style={{ fontWeight: '800', fontSize: '16px', textTransform: 'uppercase', color: '#0f172a', letterSpacing: '0.5px' }}>
+                    {getSidebarTitle()}
+                  </span>
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}
+                    title="Close Menu"
+                  >
+                    <X size={20} />
+                  </button>
+                </>
+              ) : !collapsed ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden' }}>
                     <span style={{ fontWeight: '800', fontSize: '17px', textTransform: 'uppercase', color: '#0f172a', letterSpacing: '0.6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -203,26 +351,27 @@ function App() {
               )}
             </div>
 
-            <div style={{ ...menuList, padding: collapsed ? '20px 10px' : '20px 16px' }}>
-              <NavLink to="/" end style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Dashboard">
-                <LayoutDashboard size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Dashboard</span>}
+            <div style={{ ...menuList, padding: isMobile ? '16px 12px' : (collapsed ? '20px 10px' : '20px 16px') }}>
+              <NavLink to="/" end onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Dashboard">
+                <LayoutDashboard size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Dashboard</span>}
               </NavLink>
-              <NavLink to="/employees" style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Employees">
-                <Users size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Employees</span>}
+              <NavLink to="/employees" onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Employees">
+                <Users size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Employees</span>}
               </NavLink>
-              <NavLink to="/advance" style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Advance Register">
-                <IndianRupee size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Advance Register</span>}
+              <NavLink to="/advance" onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Advance Register">
+                <IndianRupee size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Advance Register</span>}
               </NavLink>
-              <NavLink to="/salary" style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Salary Entry">
-                <FileText size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Salary Entry</span>}
+              <NavLink to="/salary" onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Salary Entry">
+                <FileText size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Salary Entry</span>}
               </NavLink>
-              <NavLink to="/reports" style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Salary Records">
-                <FileText size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Salary Records</span>}
+              <NavLink to="/reports" onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Salary Records">
+                <FileText size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Salary Records</span>}
               </NavLink>
-              <NavLink to="/search-360" style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="360 Search">
-                <Search size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>360 Search</span>}
+              <NavLink to="/search-360" onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="360 Search">
+                <Search size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>360 Search</span>}
               </NavLink>
             </div>
+
             {/* STATIC PINNED BOTTOM ACTIONS */}
             <div style={{
               marginTop: 'auto',
@@ -234,16 +383,16 @@ function App() {
             }}>
               {canInstall && (
                 <button
-                  onClick={triggerInstall}
+                  onClick={() => { if (isMobile) setMobileMenuOpen(false); triggerInstall(); }}
                   style={{
                     ...installBtn,
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    gap: collapsed ? '0' : '10px',
-                    padding: collapsed ? '14px 0' : '14px 24px'
+                    justifyContent: !isMobile && collapsed ? 'center' : 'flex-start',
+                    gap: !isMobile && collapsed ? '0' : '10px',
+                    padding: !isMobile && collapsed ? '14px 0' : '14px 24px'
                   }}
                   title="Install Rani Salary App"
                 >
-                  <Download size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Install App</span>}
+                  <Download size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Install App</span>}
                 </button>
               )}
               <button
@@ -253,14 +402,14 @@ function App() {
                 }}
                 style={{
                   ...logoutBtn,
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  gap: collapsed ? '0' : '10px',
-                  padding: collapsed ? '16px 0' : '16px 24px',
+                  justifyContent: !isMobile && collapsed ? 'center' : 'flex-start',
+                  gap: !isMobile && collapsed ? '0' : '10px',
+                  padding: !isMobile && collapsed ? '16px 0' : '16px 24px',
                   borderTop: canInstall ? '1px solid #f1f5f9' : 'none'
                 }}
                 title="Logout"
               >
-                <LogOut size={18} style={{ flexShrink: 0 }} /> {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>Logout</span>}
+                <LogOut size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Logout</span>}
               </button>
             </div>
           </nav>
@@ -270,7 +419,16 @@ function App() {
           <PWAInstallPrompt />
 
           {/* MAIN CONTENT AREA */}
-          <main style={{ flex: 1, height: '100vh', overflowY: 'auto', padding: '32px', backgroundColor: '#f8fafc', boxSizing: 'border-box' }}>
+          <main style={{
+            flex: 1,
+            height: isMobile ? 'calc(100vh - 56px)' : '100vh',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            padding: isMobile ? '16px 12px' : '32px',
+            backgroundColor: '#f8fafc',
+            boxSizing: 'border-box',
+            width: isMobile ? '100vw' : 'auto'
+          }}>
             <ErrorBoundary>
               <Routes>
                 <Route path="/" element={<Dashboard userPermissions={userPermissions} />} />
@@ -312,10 +470,10 @@ function LoginScreen() {
   };
 
   return (
-    <div style={{ backgroundColor: '#f8fafc', background: 'radial-gradient(circle at 50% 30%, #ffffff 0%, #f1f5f9 100%)', color: '#0f172a', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-      <form onSubmit={handleLogin} style={{ padding: '40px', border: '1px solid #e2e8f0', borderRadius: '16px', width: '380px', backgroundColor: '#ffffff', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '28px' }}>
-          <img src={logoRani} style={{ width: '220px', height: 'auto', marginBottom: '12px' }} alt="Rani Logo" />
+    <div style={{ backgroundColor: '#f8fafc', background: 'radial-gradient(circle at 50% 30%, #ffffff 0%, #f1f5f9 100%)', color: '#0f172a', minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', boxSizing: 'border-box' }}>
+      <form onSubmit={handleLogin} style={{ padding: '32px 22px', border: '1px solid #e2e8f0', borderRadius: '16px', width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '24px' }}>
+          <img src={logoRani} style={{ maxWidth: '180px', width: '80%', height: 'auto', marginBottom: '10px' }} alt="Rani Logo" />
         </div>
         {error && <div style={{ color: '#ef4444', fontSize: '13px', marginBottom: '14px', textAlign: 'center', fontWeight: '600' }}>{error}</div>}
         <input

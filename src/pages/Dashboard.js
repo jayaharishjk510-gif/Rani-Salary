@@ -169,16 +169,16 @@ function Dashboard({ userPermissions }) {
 }
 
 // Styles
-const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' };
-const cardStyle = { backgroundColor: '#ffffff', padding: '22px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' };
+const cardStyle = { backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
 const labelStyle = { fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: '600' };
-const valStyle = { fontSize: '30px', fontWeight: '800', color: '#0f172a' };
+const valStyle = { fontSize: '26px', fontWeight: '800', color: '#0f172a' };
 
-const tableContainer = { backgroundColor: '#ffffff', padding: '22px', borderRadius: '14px', border: '1px solid #e2e8f0', marginTop: '28px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
-const tableStyle = { width: '100%', borderCollapse: 'collapse', textAlign: 'left' };
+const tableContainer = { backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '14px', border: '1px solid #e2e8f0', marginTop: '24px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)' };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '550px' };
 const headerRow = { borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' };
-const thStyle = { padding: '12px 16px', color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' };
+const thStyle = { padding: '12px 14px', color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' };
 const trStyle = { borderBottom: '1px solid #f1f5f9' };
-const tdStyle = { padding: '14px 16px', fontSize: '13px', color: '#334155' };
+const tdStyle = { padding: '12px 14px', fontSize: '13px', color: '#334155' };
 
 export default Dashboard;

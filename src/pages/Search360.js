@@ -735,19 +735,24 @@ const metricSub = {
 
 const tabBar = {
   display: 'flex',
-  gap: '15px',
+  gap: '10px',
   borderBottom: '1px solid #e2e8f0',
-  marginBottom: '16px'
+  marginBottom: '16px',
+  overflowX: 'auto',
+  whiteSpace: 'nowrap',
+  paddingBottom: '2px',
+  WebkitOverflowScrolling: 'touch'
 };
 
 const tabButton = {
   background: 'none',
   border: 'none',
-  padding: '10px 15px',
-  fontSize: '14px',
+  padding: '10px 14px',
+  fontSize: '13px',
   fontWeight: '700',
   cursor: 'pointer',
-  transition: '0.2s'
+  transition: '0.2s',
+  flexShrink: 0
 };
 
 const tableContainer = {
