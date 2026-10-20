@@ -1,8 +1,8 @@
 // Telegram Notification Service for Rani Salary
 
 const TELEGRAM_CONFIG = {
-  botToken: process.env.REACT_APP_TELEGRAM_BOT_TOKEN || '8922931497:AAFGtxvUhcHFUK9bjlalX--rKZtKaKhqX48',
-  devChatId: process.env.REACT_APP_TELEGRAM_DEV_CHAT_ID || '1377689327',
+  botToken: process.env.REACT_APP_TELEGRAM_BOT_TOKEN || '',
+  devChatId: process.env.REACT_APP_TELEGRAM_DEV_CHAT_ID || '',
   adminChatId: process.env.REACT_APP_TELEGRAM_ADMIN_CHAT_ID || '' // Can be added later
 };
 
