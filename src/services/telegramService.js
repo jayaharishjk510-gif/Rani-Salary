@@ -2,7 +2,7 @@
 
 const TELEGRAM_CONFIG = {
   botToken: process.env.REACT_APP_TELEGRAM_BOT_TOKEN || '',
-  devChatId: process.env.REACT_APP_TELEGRAM_DEV_CHAT_ID || '1377689327',
+  devChatId: process.env.REACT_APP_TELEGRAM_DEV_CHAT_ID || '',
   adminChatId: process.env.REACT_APP_TELEGRAM_ADMIN_CHAT_ID || '' // Can be added later
 };
 
