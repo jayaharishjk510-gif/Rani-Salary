@@ -1,188 +1,67 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { getSavedSlipConfig } from './utils/slipConfig';
 
-const SalaryReport = ({ data }) => {
+/**
+ * SalaryReport Component
+ * 
+ * Renders print-ready salary slips according to the layout and content configuration
+ * set in Settings (or passed via props).
+ */
+const SalaryReport = ({ data, config, isPreview = false }) => {
+  // Local config state synced with localStorage if not provided via props
+  const [activeConfig, setActiveConfig] = useState(() => config || getSavedSlipConfig());
+
+  useEffect(() => {
+    if (config) {
+      setActiveConfig(config);
+      return;
+    }
+    const handleConfigChange = () => {
+      setActiveConfig(getSavedSlipConfig());
+    };
+    window.addEventListener('salary-slip-config-changed', handleConfigChange);
+    return () => window.removeEventListener('salary-slip-config-changed', handleConfigChange);
+  }, [config]);
+
   // Null guard: render nothing if data is missing or empty
   if (!data || data.length === 0) return null;
 
-  // Chunk the records into groups of 6 (3 rows x 2 columns per A4 page)
-  const chunkedData = [];
-  const chunkSize = 6;
-  for (let i = 0; i < data.length; i += chunkSize) {
-    chunkedData.push(data.slice(i, i + chunkSize));
+  const slipsPerPage = Number(activeConfig.slipsPerPage) || 6;
+  const colors = getThemeColors(activeConfig.colorTheme);
+  const fontFamily = getFontFamily(activeConfig.fontFamily);
+  const borderStyleStr = `${activeConfig.borderWidth || 1.5}px ${activeConfig.borderStyle || 'solid'} ${colors.border}`;
+
+  // If in Preview Mode, render a single card standalone without page wrappers
+  if (isPreview) {
+    const sampleReport = data[0];
+    return (
+      <div style={{ width: '100%', maxWidth: '380px', margin: '0 auto' }}>
+        {renderSlipCard(sampleReport, 0, activeConfig, colors, fontFamily, borderStyleStr, true)}
+      </div>
+    );
   }
+
+  // Chunk the records according to slipsPerPage
+  const chunkedData = [];
+  for (let i = 0; i < data.length; i += slipsPerPage) {
+    chunkedData.push(data.slice(i, i + slipsPerPage));
+  }
+
+  const { gridCols, gridRows, printCardMaxHeight } = getGridLayout(slipsPerPage);
+
+  const dynamicPageStyle = {
+    ...pageStyle,
+    gridTemplateColumns: gridCols,
+    gridTemplateRows: gridRows
+  };
 
   return (
     <div className="report-container">
       {chunkedData.map((pageData, pageIdx) => (
-        <div key={pageIdx} className="salary-report-page" style={pageStyle}>
-          {pageData.map((report, index) => {
-            // Calculations
-            const days = Number(report.days) || 0;
-            const baseSalary = Number(report.baseSalary) || 0;
-            const isMonthly = report.salaryType === 'monthly' || baseSalary > 1500;
-            const perDayRate = report.dailyRateEquiv || (isMonthly ? (baseSalary > 0 ? Math.round(baseSalary / 30) : 0) : baseSalary);
-            const totalSalary = Number(report.fixedEarnings) || (isMonthly ? (days === 30 ? baseSalary : Math.round((baseSalary / 30) * days)) : Math.round(baseSalary * days));
-
-            // Additions
-            const incentive = Number(report.incentive ?? report.insentive ?? 0);
-            const lBonus = Number(report.lBonus || 0);
-            const rdAdd = Number(report.rdAdd || 0);
-            const totalAdd = incentive + lBonus + rdAdd;
-
-            // Deductions
-            const advance = Number(report.advance || 0);
-            const jBalance = Number(report.jBalance || 0);
-            const penalty = Number(report.penalty || 0);
-            const rdDed = Number(report.rdDed || 0);
-            const pf = Number(report.pf || 0);
-            const totalDed = advance + jBalance + penalty + rdDed + pf;
-
-            // Grand Total & Net
-            const grandTotal = Number(report.gTotal ?? Math.round(totalSalary + totalAdd - totalDed));
-            const netSalary = Number(report.net ?? report.gTotal ?? grandTotal);
-
-            return (
-              <div key={index} className="salary-card" style={cardStyle}>
-                <table style={tableStyle}>
-                  <colgroup>
-                    <col style={{ width: '25%' }} />
-                    <col style={{ width: '25%' }} />
-                    <col style={{ width: '25%' }} />
-                    <col style={{ width: '25%' }} />
-                  </colgroup>
-                  <tbody>
-                    {/* Header Row: Salary Report */}
-                    <tr>
-                      <td colSpan={4} style={titleCellStyle}>
-                        Salary Report
-                      </td>
-                    </tr>
-
-                    {/* Employee Name Row */}
-                    <tr>
-                      <td colSpan={4} style={nameCellStyle}>
-                        {report.name ? report.name.toUpperCase() : 'N/A'}
-                        {report.employeeCode ? ` [${report.employeeCode}]` : ''}
-                      </td>
-                    </tr>
-
-                    {/* Stats Row: Month/Year, Days, Per Day Rate, Total Salary */}
-                    <tr>
-                      <td style={statsCellStyle}>
-                        {report.month} {report.year || ''}
-                      </td>
-                      <td style={statsCellStyle}>
-                        {days} {days === 1 ? 'day' : 'days'}
-                      </td>
-                      <td style={statsCellStyle}>
-                        {perDayRate}
-                      </td>
-                      <td style={statsCellStyle}>
-                        {totalSalary}
-                      </td>
-                    </tr>
-
-                    {/* Section Headers: Addition & Deduction */}
-                    <tr>
-                      <td colSpan={2} style={additionHeaderStyle}>
-                        Addition
-                      </td>
-                      <td colSpan={2} style={deductionHeaderStyle}>
-                        Deduction
-                      </td>
-                    </tr>
-
-                    {/* Row 1: Incentive | Advance */}
-                    <tr>
-                      <td style={greenLabelStyle}>Incentive</td>
-                      <td style={greenValueStyle}>{incentive}</td>
-                      <td style={orangeLabelStyle}>Advance</td>
-                      <td style={orangeValueStyle}>{advance}</td>
-                    </tr>
-
-                    {/* Row 2: L.Bonus | J.Balance */}
-                    <tr>
-                      <td style={greenLabelStyle}>L.Bonus</td>
-                      <td style={greenValueStyle}>{lBonus}</td>
-                      <td style={orangeLabelStyle}>J.Balance</td>
-                      <td style={orangeValueStyle}>{jBalance}</td>
-                    </tr>
-
-                    {/* Row 3: RD | Penalty */}
-                    <tr>
-                      <td style={greenLabelStyle}>RD</td>
-                      <td style={greenValueStyle}>{rdAdd}</td>
-                      <td style={orangeLabelStyle}>Penalty</td>
-                      <td style={orangeValueStyle}>{penalty}</td>
-                    </tr>
-
-                    {/* Row 4: Empty | RD */}
-                    <tr>
-                      <td style={greenLabelStyle}>&nbsp;</td>
-                      <td style={greenValueStyle}>&nbsp;</td>
-                      <td style={orangeLabelStyle}>RD</td>
-                      <td style={orangeValueStyle}>{rdDed}</td>
-                    </tr>
-
-                    {/* Row 5: Empty | PF */}
-                    <tr>
-                      <td style={greenLabelStyle}>&nbsp;</td>
-                      <td style={greenValueStyle}>&nbsp;</td>
-                      <td style={orangeLabelStyle}>PF</td>
-                      <td style={orangeValueStyle}>{pf}</td>
-                    </tr>
-
-                    {/* Row 6: Addition Total | Deduction Total */}
-                    <tr>
-                      <td style={{ ...greenLabelStyle, fontWeight: 'bold' }}>Total</td>
-                      <td style={{ ...greenValueStyle, fontWeight: 'bold' }}>{totalAdd}</td>
-                      <td style={{ ...orangeLabelStyle, fontWeight: 'bold' }}>Total</td>
-                      <td style={{ ...orangeValueStyle, fontWeight: 'bold' }}>{totalDed}</td>
-                    </tr>
-
-                    {/* Overall Total Header: [Empty] | Addition | Deduction | Grand Total */}
-                    <tr>
-                      <td rowSpan={2} style={overallTotalLabelStyle}>
-                        Overall Total
-                      </td>
-                      <td style={overallSubHeaderStyle}>Addition</td>
-                      <td style={overallSubHeaderStyle}>Deduction</td>
-                      <td style={overallSubHeaderStyle}>Grand Total</td>
-                    </tr>
-
-                    {/* Overall Total Values */}
-                    <tr>
-                      <td style={overallValueStyle}>{totalAdd}</td>
-                      <td style={overallValueStyle}>{totalDed}</td>
-                      <td style={overallValueStyle}>{grandTotal}</td>
-                    </tr>
-
-                    {/* Spacer Row */}
-                    <tr>
-                      <td colSpan={4} style={spacerRowStyle}></td>
-                    </tr>
-
-                    {/* Net Salary Row */}
-                    <tr>
-                      <td colSpan={2} style={netSalaryLabelStyle}>
-                        Net Salary
-                      </td>
-                      <td colSpan={2} style={netSalaryValueStyle}>
-                        {netSalary}
-                      </td>
-                    </tr>
-
-                    {/* Remarks Row */}
-                    <tr>
-                      <td colSpan={4} style={remarksCellStyle}>
-                        Remarks: {report.remarks || 'GOOD'}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
+        <div key={pageIdx} className="salary-report-page" style={dynamicPageStyle}>
+          {pageData.map((report, index) =>
+            renderSlipCard(report, index, activeConfig, colors, fontFamily, borderStyleStr, false)
+          )}
         </div>
       ))}
 
@@ -222,8 +101,8 @@ const SalaryReport = ({ data }) => {
             min-height: 288mm !important;
             box-sizing: border-box !important;
             display: grid !important;
-            grid-template-columns: 1fr 1fr !important;
-            grid-template-rows: repeat(3, 1fr) !important;
+            grid-template-columns: ${gridCols} !important;
+            grid-template-rows: ${gridRows} !important;
             gap: 2.5mm !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
@@ -238,9 +117,9 @@ const SalaryReport = ({ data }) => {
           .salary-card {
             box-sizing: border-box !important;
             height: 100% !important;
-            max-height: 94mm !important;
+            max-height: ${printCardMaxHeight} !important;
             overflow: hidden !important;
-            border: 1.5px solid #000 !important;
+            border: ${borderStyleStr} !important;
           }
         }
       `}</style>
@@ -248,8 +127,505 @@ const SalaryReport = ({ data }) => {
   );
 };
 
-// --- Styles matching the reference template ---
+/**
+ * Render an individual salary slip card
+ */
+function renderSlipCard(report, index, config, colors, fontFamily, borderStyleStr, isPreview) {
+  // Calculations
+  const days = Number(report.days) || 0;
+  const baseSalary = Number(report.baseSalary) || 0;
+  const isMonthly = report.salaryType === 'monthly' || baseSalary > 1500;
+  const perDayRate = report.dailyRateEquiv || (isMonthly ? (baseSalary > 0 ? Math.round(baseSalary / 30) : 0) : baseSalary);
+  const totalSalary = Number(report.fixedEarnings) || (isMonthly ? (days === 30 ? baseSalary : Math.round((baseSalary / 30) * days)) : Math.round(baseSalary * days));
 
+  // Additions
+  const incentive = Number(report.incentive ?? report.insentive ?? 0);
+  const lBonus = Number(report.lBonus || 0);
+  const rdAdd = Number(report.rdAdd || 0);
+  const totalAdd = incentive + lBonus + rdAdd;
+
+  // Deductions
+  const advance = Number(report.advance || 0);
+  const jBalance = Number(report.jBalance || 0);
+  const penalty = Number(report.penalty || 0);
+  const rdDed = Number(report.rdDed || 0);
+  const pf = Number(report.pf || 0);
+  const totalDed = advance + jBalance + penalty + rdDed + pf;
+
+  // Grand Total & Net
+  const grandTotal = Number(report.gTotal ?? Math.round(totalSalary + totalAdd - totalDed));
+  const netSalary = Number(report.net ?? report.gTotal ?? grandTotal);
+
+  const cellBorder = `1px solid ${colors.border}`;
+  const cellBase = {
+    border: cellBorder,
+    padding: '2px 4px',
+    boxSizing: 'border-box',
+    color: colors.text
+  };
+
+  const dynamicTableStyle = {
+    ...tableStyle,
+    fontFamily
+  };
+
+  return (
+    <div
+      key={index}
+      className="salary-card"
+      style={{
+        ...cardStyle,
+        border: borderStyleStr,
+        boxShadow: isPreview ? '0 4px 12px rgba(0,0,0,0.08)' : 'none'
+      }}
+    >
+      <table style={dynamicTableStyle}>
+        <colgroup>
+          <col style={{ width: '25%' }} />
+          <col style={{ width: '25%' }} />
+          <col style={{ width: '25%' }} />
+          <col style={{ width: '25%' }} />
+        </colgroup>
+        <tbody>
+          {/* Header Row: Title */}
+          <tr>
+            <td
+              colSpan={4}
+              style={{
+                ...cellBase,
+                backgroundColor: colors.titleBg,
+                fontWeight: 'bold',
+                fontSize: '11px',
+                textAlign: 'center',
+                padding: '3px 2px'
+              }}
+            >
+              {config.titleText || 'Salary Report'}
+            </td>
+          </tr>
+
+          {/* Optional Subtitle Row */}
+          {config.showSubTitle && config.subTitleText && (
+            <tr>
+              <td
+                colSpan={4}
+                style={{
+                  ...cellBase,
+                  backgroundColor: colors.titleBg,
+                  fontSize: '8.5px',
+                  fontWeight: '600',
+                  textAlign: 'center',
+                  padding: '1px 2px',
+                  borderTop: 'none',
+                  letterSpacing: '0.2px'
+                }}
+              >
+                {config.subTitleText}
+              </td>
+            </tr>
+          )}
+
+          {/* Employee Name Row */}
+          <tr>
+            <td
+              colSpan={4}
+              style={{
+                ...cellBase,
+                backgroundColor: colors.nameBg,
+                fontWeight: 'bold',
+                fontSize: '10px',
+                textAlign: 'center',
+                padding: '2.5px 2px',
+                letterSpacing: '0.3px'
+              }}
+            >
+              {report.name ? report.name.toUpperCase() : 'N/A'}
+              {config.showEmployeeCode && report.employeeCode ? ` [${report.employeeCode}]` : ''}
+            </td>
+          </tr>
+
+          {/* Stats Row: Month/Year, Days, Per Day Rate, Total Salary */}
+          {config.showStatsRow && (
+            <tr>
+              <td
+                style={{
+                  ...cellBase,
+                  backgroundColor: colors.statsBg,
+                  fontWeight: 'bold',
+                  fontSize: '9px',
+                  textAlign: 'center',
+                  padding: '2.5px 2px'
+                }}
+              >
+                {report.month} {report.year || ''}
+              </td>
+              <td
+                style={{
+                  ...cellBase,
+                  backgroundColor: colors.statsBg,
+                  fontWeight: 'bold',
+                  fontSize: '9px',
+                  textAlign: 'center',
+                  padding: '2.5px 2px'
+                }}
+              >
+                {days} {days === 1 ? 'day' : 'days'}
+              </td>
+              <td
+                style={{
+                  ...cellBase,
+                  backgroundColor: colors.statsBg,
+                  fontWeight: 'bold',
+                  fontSize: '9px',
+                  textAlign: 'center',
+                  padding: '2.5px 2px'
+                }}
+              >
+                {perDayRate}
+              </td>
+              <td
+                style={{
+                  ...cellBase,
+                  backgroundColor: colors.statsBg,
+                  fontWeight: 'bold',
+                  fontSize: '9px',
+                  textAlign: 'center',
+                  padding: '2.5px 2px'
+                }}
+              >
+                {totalSalary}
+              </td>
+            </tr>
+          )}
+
+          {/* Section Headers: Addition & Deduction */}
+          <tr>
+            <td
+              colSpan={2}
+              style={{
+                ...cellBase,
+                backgroundColor: colors.additionHeaderBg,
+                fontWeight: 'bold',
+                fontSize: '10px',
+                textAlign: 'center',
+                padding: '2.5px'
+              }}
+            >
+              {config.additionHeader || 'Addition'}
+            </td>
+            <td
+              colSpan={2}
+              style={{
+                ...cellBase,
+                backgroundColor: colors.deductionHeaderBg,
+                fontWeight: 'bold',
+                fontSize: '10px',
+                textAlign: 'center',
+                padding: '2.5px'
+              }}
+            >
+              {config.deductionHeader || 'Deduction'}
+            </td>
+          </tr>
+
+          {/* Row 1: Incentive | Advance */}
+          <tr>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.incentiveLabel || 'Incentive'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {incentive}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.advanceLabel || 'Advance'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {advance}
+            </td>
+          </tr>
+
+          {/* Row 2: L.Bonus | J.Balance */}
+          <tr>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.lBonusLabel || 'L.Bonus'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {lBonus}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.jBalanceLabel || 'J.Balance'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {jBalance}
+            </td>
+          </tr>
+
+          {/* Row 3: RD | Penalty */}
+          <tr>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.rdAddLabel || 'RD'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {rdAdd}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.penaltyLabel || 'Penalty'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {penalty}
+            </td>
+          </tr>
+
+          {/* Row 4: Empty | RD */}
+          <tr>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg }}>&nbsp;</td>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg }}>&nbsp;</td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.rdDedLabel || 'RD'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {rdDed}
+            </td>
+          </tr>
+
+          {/* Row 5: Empty | PF */}
+          <tr>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg }}>&nbsp;</td>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg }}>&nbsp;</td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              {config.pfLabel || 'PF'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, textAlign: 'center', fontSize: '9px' }}>
+              {pf}
+            </td>
+          </tr>
+
+          {/* Row 6: Addition Total | Deduction Total */}
+          <tr>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, fontWeight: 'bold', textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              Total
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.additionCellBg, fontWeight: 'bold', textAlign: 'center', fontSize: '9px' }}>
+              {totalAdd}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, fontWeight: 'bold', textAlign: 'left', paddingLeft: '8px', fontSize: '9px' }}>
+              Total
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.deductionCellBg, fontWeight: 'bold', textAlign: 'center', fontSize: '9px' }}>
+              {totalDed}
+            </td>
+          </tr>
+
+          {/* Overall Total Header: [Empty] | Addition | Deduction | Grand Total */}
+          <tr>
+            <td
+              rowSpan={2}
+              style={{
+                ...cellBase,
+                backgroundColor: colors.overallTotalBg,
+                fontWeight: 'bold',
+                fontSize: '9.5px',
+                textAlign: 'center',
+                verticalAlign: 'middle'
+              }}
+            >
+              {config.overallTotalHeader || 'Overall Total'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.overallTotalBg, fontWeight: 'bold', fontSize: '9px', textAlign: 'center', padding: '2px' }}>
+              {config.additionHeader || 'Addition'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.overallTotalBg, fontWeight: 'bold', fontSize: '9px', textAlign: 'center', padding: '2px' }}>
+              {config.deductionHeader || 'Deduction'}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.overallTotalBg, fontWeight: 'bold', fontSize: '9px', textAlign: 'center', padding: '2px' }}>
+              Grand Total
+            </td>
+          </tr>
+
+          {/* Overall Total Values */}
+          <tr>
+            <td style={{ ...cellBase, backgroundColor: colors.overallTotalBg, fontWeight: 'bold', fontSize: '9.5px', textAlign: 'center', padding: '2.5px' }}>
+              {totalAdd}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.overallTotalBg, fontWeight: 'bold', fontSize: '9.5px', textAlign: 'center', padding: '2.5px' }}>
+              {totalDed}
+            </td>
+            <td style={{ ...cellBase, backgroundColor: colors.overallTotalBg, fontWeight: 'bold', fontSize: '9.5px', textAlign: 'center', padding: '2.5px' }}>
+              {grandTotal}
+            </td>
+          </tr>
+
+          {/* Spacer Row */}
+          <tr>
+            <td colSpan={4} style={spacerRowStyle}></td>
+          </tr>
+
+          {/* Net Salary Row */}
+          <tr>
+            <td
+              colSpan={2}
+              style={{
+                ...cellBase,
+                backgroundColor: colors.netSalaryBg,
+                fontWeight: 'bold',
+                fontSize: '10px',
+                textAlign: 'center',
+                padding: '3px 2px'
+              }}
+            >
+              {config.netSalaryHeader || 'Net Salary'}
+            </td>
+            <td
+              colSpan={2}
+              style={{
+                ...cellBase,
+                backgroundColor: colors.netSalaryBg,
+                fontWeight: 'bold',
+                fontSize: '10.5px',
+                textAlign: 'center',
+                padding: '3px 2px'
+              }}
+            >
+              {netSalary}
+            </td>
+          </tr>
+
+          {/* Remarks Row */}
+          {config.showRemarksRow && (
+            <tr>
+              <td
+                colSpan={4}
+                style={{
+                  ...cellBase,
+                  backgroundColor: colors.remarksBg,
+                  fontWeight: 'bold',
+                  fontSize: '9px',
+                  textAlign: 'center',
+                  padding: '2.5px 2px'
+                }}
+              >
+                {config.remarksPrefix || 'Remarks:'} {report.remarks || config.defaultRemarksText || 'GOOD'}
+              </td>
+            </tr>
+          )}
+
+          {/* Optional Signatures Row */}
+          {config.showSignatures && (
+            <tr>
+              <td colSpan={2} style={{ ...cellBase, backgroundColor: '#ffffff', padding: '14px 6px 4px 6px', textAlign: 'center' }}>
+                <div style={{ borderTop: `1px dashed ${colors.border}`, paddingTop: '3px', fontSize: '8px', fontWeight: 'bold' }}>
+                  {config.signatureLeftText || 'Employee Signature'}
+                </div>
+              </td>
+              <td colSpan={2} style={{ ...cellBase, backgroundColor: '#ffffff', padding: '14px 6px 4px 6px', textAlign: 'center' }}>
+                <div style={{ borderTop: `1px dashed ${colors.border}`, paddingTop: '3px', fontSize: '8px', fontWeight: 'bold' }}>
+                  {config.signatureRightText || 'Authorized Signatory'}
+                </div>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Layout helper for slips per page
+function getGridLayout(slips) {
+  switch (slips) {
+    case 4:
+      return {
+        gridCols: '1fr 1fr',
+        gridRows: 'repeat(2, 1fr)',
+        printCardMaxHeight: '142mm'
+      };
+    case 2:
+      return {
+        gridCols: '1fr',
+        gridRows: 'repeat(2, 1fr)',
+        printCardMaxHeight: '142mm'
+      };
+    case 1:
+      return {
+        gridCols: '1fr',
+        gridRows: '1fr',
+        printCardMaxHeight: '286mm'
+      };
+    case 6:
+    default:
+      return {
+        gridCols: '1fr 1fr',
+        gridRows: 'repeat(3, 1fr)',
+        printCardMaxHeight: '94mm'
+      };
+  }
+}
+
+// Font family helper
+function getFontFamily(fontKey) {
+  switch (fontKey) {
+    case 'sans':
+      return '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+    case 'mono':
+      return '"Courier New", Courier, monospace';
+    case 'serif':
+    default:
+      return "'Times New Roman', Times, Georgia, serif";
+  }
+}
+
+// Color theme helper
+function getThemeColors(themeKey) {
+  if (themeKey === 'monochrome') {
+    return {
+      titleBg: '#e2e8f0',
+      nameBg: '#f1f5f9',
+      statsBg: '#f1f5f9',
+      additionHeaderBg: '#cbd5e1',
+      deductionHeaderBg: '#cbd5e1',
+      additionCellBg: '#f8fafc',
+      deductionCellBg: '#f8fafc',
+      overallTotalBg: '#f1f5f9',
+      netSalaryBg: '#e2e8f0',
+      remarksBg: '#f1f5f9',
+      text: '#0f172a',
+      border: '#334155'
+    };
+  }
+  if (themeKey === 'minimal') {
+    return {
+      titleBg: '#ffffff',
+      nameBg: '#ffffff',
+      statsBg: '#ffffff',
+      additionHeaderBg: '#f8fafc',
+      deductionHeaderBg: '#f8fafc',
+      additionCellBg: '#ffffff',
+      deductionCellBg: '#ffffff',
+      overallTotalBg: '#ffffff',
+      netSalaryBg: '#f1f5f9',
+      remarksBg: '#ffffff',
+      text: '#000000',
+      border: '#000000'
+    };
+  }
+  // Default: colored (Original exact pastel colors matching reference template)
+  return {
+    titleBg: '#fce5cd',
+    nameBg: '#cfe2f3',
+    statsBg: '#cfe2f3',
+    additionHeaderBg: '#b6d7a8',
+    deductionHeaderBg: '#f9cb9c',
+    additionCellBg: '#d9ead3',
+    deductionCellBg: '#fce5cd',
+    overallTotalBg: '#cfe2f3',
+    netSalaryBg: '#d5a6bd',
+    remarksBg: '#cfe2f3',
+    text: '#000000',
+    border: '#000000'
+  };
+}
+
+// Base styles
 const pageStyle = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
@@ -266,7 +642,6 @@ const pageStyle = {
 };
 
 const cardStyle = {
-  border: '1.5px solid #000',
   backgroundColor: '#fff',
   boxSizing: 'border-box',
   height: '100%',
@@ -282,162 +657,14 @@ const tableStyle = {
   borderCollapse: 'collapse',
   tableLayout: 'fixed',
   fontSize: '9px',
-  lineHeight: '1.2',
-  fontFamily: "'Times New Roman', Times, Georgia, serif",
-  color: '#000'
+  lineHeight: '1.2'
 };
 
-const cellBase = {
-  border: '1px solid #000',
-  padding: '2px 4px',
-  boxSizing: 'border-box'
-};
-
-// Title: Light Peach
-const titleCellStyle = {
-  ...cellBase,
-  backgroundColor: '#fce5cd',
-  fontWeight: 'bold',
-  fontSize: '11px',
-  textAlign: 'center',
-  padding: '3px 2px'
-};
-
-// Employee Name: Light Sky Blue
-const nameCellStyle = {
-  ...cellBase,
-  backgroundColor: '#cfe2f3',
-  fontWeight: 'bold',
-  fontSize: '10px',
-  textAlign: 'center',
-  padding: '2.5px 2px',
-  letterSpacing: '0.3px'
-};
-
-// Month, Days, Per day rate, Total salary: Light Sky Blue
-const statsCellStyle = {
-  ...cellBase,
-  backgroundColor: '#cfe2f3',
-  fontWeight: 'bold',
-  fontSize: '9px',
-  textAlign: 'center',
-  padding: '2.5px 2px'
-};
-
-// Headers: Addition (Green) & Deduction (Peach)
-const additionHeaderStyle = {
-  ...cellBase,
-  backgroundColor: '#b6d7a8',
-  fontWeight: 'bold',
-  fontSize: '10px',
-  textAlign: 'center',
-  padding: '2.5px'
-};
-
-const deductionHeaderStyle = {
-  ...cellBase,
-  backgroundColor: '#f9cb9c',
-  fontWeight: 'bold',
-  fontSize: '10px',
-  textAlign: 'center',
-  padding: '2.5px'
-};
-
-// Green Cells (Addition)
-const greenLabelStyle = {
-  ...cellBase,
-  backgroundColor: '#d9ead3',
-  textAlign: 'left',
-  paddingLeft: '8px',
-  fontSize: '9px'
-};
-
-const greenValueStyle = {
-  ...cellBase,
-  backgroundColor: '#d9ead3',
-  textAlign: 'center',
-  fontSize: '9px'
-};
-
-// Orange Cells (Deduction)
-const orangeLabelStyle = {
-  ...cellBase,
-  backgroundColor: '#fce5cd',
-  textAlign: 'left',
-  paddingLeft: '8px',
-  fontSize: '9px'
-};
-
-const orangeValueStyle = {
-  ...cellBase,
-  backgroundColor: '#fce5cd',
-  textAlign: 'center',
-  fontSize: '9px'
-};
-
-// Overall Total Section: Light Sky Blue
-const overallTotalLabelStyle = {
-  ...cellBase,
-  backgroundColor: '#cfe2f3',
-  fontWeight: 'bold',
-  fontSize: '9.5px',
-  textAlign: 'center',
-  verticalAlign: 'middle'
-};
-
-const overallSubHeaderStyle = {
-  ...cellBase,
-  backgroundColor: '#cfe2f3',
-  fontWeight: 'bold',
-  fontSize: '9px',
-  textAlign: 'center',
-  padding: '2px'
-};
-
-const overallValueStyle = {
-  ...cellBase,
-  backgroundColor: '#cfe2f3',
-  fontWeight: 'bold',
-  fontSize: '9.5px',
-  textAlign: 'center',
-  padding: '2.5px'
-};
-
-// White separator row between overall total and net salary
 const spacerRowStyle = {
   height: '4px',
   backgroundColor: '#ffffff',
   border: 'none',
   padding: 0
-};
-
-// Net Salary: Mauve / Lavender Pink
-const netSalaryLabelStyle = {
-  ...cellBase,
-  backgroundColor: '#d5a6bd',
-  fontWeight: 'bold',
-  fontSize: '10px',
-  textAlign: 'center',
-  padding: '3px 2px'
-};
-
-const netSalaryValueStyle = {
-  ...cellBase,
-  backgroundColor: '#d5a6bd',
-  fontWeight: 'bold',
-  fontSize: '10.5px',
-  textAlign: 'center',
-  padding: '3px 2px'
-};
-
-// Remarks: Light Sky Blue
-const remarksCellStyle = {
-  ...cellBase,
-  backgroundColor: '#cfe2f3',
-  fontWeight: 'bold',
-  fontSize: '9px',
-  textAlign: 'center',
-  padding: '2.5px 2px'
 };
 
 export default SalaryReport;

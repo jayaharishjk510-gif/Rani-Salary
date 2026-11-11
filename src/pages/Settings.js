@@ -9,6 +9,7 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  setDoc,
   onSnapshot
 } from 'firebase/firestore';
 import {
@@ -29,7 +30,12 @@ import {
   ToggleRight,
   MessageSquare,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Printer,
+  Type,
+  LayoutTemplate,
+  RotateCcw,
+  Eye
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import {
@@ -37,6 +43,36 @@ import {
   TELEGRAM_CONFIG,
   getISTDateTime
 } from '../services/telegramService';
+import SalaryReport from '../SalaryReport';
+import {
+  getSavedSlipConfig,
+  saveSlipConfigToStorage,
+  resetSlipConfigToDefault
+} from '../utils/slipConfig';
+
+// Sample preview record matching realistic store payroll data
+const SAMPLE_PREVIEW_RECORD = {
+  name: 'SURESH KUMAR',
+  employeeCode: 'RC-104',
+  month: 'November',
+  year: '2026',
+  days: 30,
+  baseSalary: 18000,
+  salaryType: 'monthly',
+  dailyRateEquiv: 600,
+  fixedEarnings: 18000,
+  incentive: 1500,
+  lBonus: 500,
+  rdAdd: 200,
+  advance: 2000,
+  jBalance: 500,
+  penalty: 100,
+  rdDed: 300,
+  pf: 400,
+  gTotal: 16900,
+  net: 16900,
+  remarks: 'GOOD PERFORMANCE'
+};
 
 function SettingsPage({ userPermissions }) {
   const { showToast } = useToast();
@@ -60,6 +96,11 @@ function SettingsPage({ userPermissions }) {
   const [sendingTestAlert, setSendingTestAlert] = useState(false);
   const [exportingBackup, setExportingBackup] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
+
+  // Print Slip Editor State
+  const [slipConfig, setSlipConfig] = useState(() => getSavedSlipConfig());
+  const [slipEditorTab, setSlipEditorTab] = useState('layout'); // 'layout' | 'content'
+  const [savingSlipConfig, setSavingSlipConfig] = useState(false);
 
   // Telegram Recipients state (Firestore synced)
   const [recipients, setRecipients] = useState([]);
@@ -86,7 +127,51 @@ function SettingsPage({ userPermissions }) {
     return unsub;
   }, []);
 
-  // Save general preferences
+  // Update a single property in slipConfig
+  const updateSlipConfig = (key, value) => {
+    setSlipConfig(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Save print slip configuration to localStorage and Firestore
+  const handleSaveSlipConfig = async () => {
+    setSavingSlipConfig(true);
+    try {
+      saveSlipConfigToStorage(slipConfig);
+
+      // Also persist to Firestore so all managers share the custom layout
+      try {
+        await setDoc(doc(db, 'app_settings', 'print_slip'), {
+          ...slipConfig,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser?.email || 'Admin'
+        }, { merge: true });
+      } catch (fsErr) {
+        console.warn('Firestore print_slip sync skipped (offline or permissions):', fsErr);
+      }
+
+      showToast('Print slip layout and contents saved successfully!', 'success');
+    } catch (err) {
+      showToast('Failed to save slip layout: ' + err.message, 'error');
+    } finally {
+      setSavingSlipConfig(false);
+    }
+  };
+
+  // Reset slip configuration back to factory default template
+  const handleResetSlipConfig = () => {
+    if (window.confirm('Reset salary slip layout and all labels back to the original reference template?')) {
+      const fresh = resetSlipConfigToDefault();
+      setSlipConfig(fresh);
+      showToast('Salary slip restored to default reference template.', 'info');
+    }
+  };
+
+  // Trigger browser print test of sample slip
+  const handlePrintTestSlip = () => {
+    window.print();
+  };
+
+  // Save general shop & user preferences
   const handleSavePreferences = () => {
     localStorage.setItem('preferred_shop', preferredShop);
     localStorage.setItem('default_remarks', defaultRemarks.trim() || 'GOOD');
@@ -148,51 +233,42 @@ function SettingsPage({ userPermissions }) {
     }
     try {
       await deleteDoc(doc(db, 'telegram_recipients', recipient.id));
-      showToast(`Removed ${recipient.name} from notifications.`, 'info');
+      showToast(`Removed ${recipient.name}.`, 'info');
     } catch (err) {
       showToast('Error deleting recipient: ' + err.message, 'error');
     }
   };
 
-  // Test individual recipient
+  // Send test message to a specific recipient
   const handleTestSpecificRecipient = async (recipient) => {
-    setTestingId(recipient.id || recipient.chatId);
+    setTestingId(recipient.id);
     try {
       const nowIST = getISTDateTime();
-      const text = [
+      const msg = [
         `🔔 <b>RANI SALARY - TEST NOTIFICATION</b>`,
         ``,
-        `Hello <b>${recipient.name}</b>! 👋`,
-        `This is a test notification from the <b>Rani Salary App</b>.`,
+        `Hello <b>${recipient.name}</b>,`,
+        `This is a test notification confirming your Telegram setup is active!`,
         ``,
-        `🏪 <b>Assigned Scope:</b> ${recipient.dept || 'All Shops'}`,
+        `🏪 <b>Shop:</b> ${recipient.dept || 'All Shops'}`,
         `🕒 <b>Time:</b> ${nowIST} (IST)`,
-        `✅ <b>Status:</b> You are connected and will receive login alerts and salary updates!`
+        `👤 <b>Triggered By:</b> <code>${currentUser?.email || 'Admin'}</code>`
       ].join('\n');
 
-      const res = await sendTelegramMessage(text, [recipient.chatId]);
-      if (res.ok) {
-        showToast(`✓ Test message delivered to ${recipient.name} on Telegram!`, 'success');
+      const res = await sendTelegramMessage(msg, { targetChatIds: [recipient.chatId] });
+      if (res && res.ok) {
+        showToast(`Test message sent successfully to ${recipient.name}!`, 'success');
       } else {
-        const errorDesc = res.results?.[0]?.description || 'Failed to send';
-        if (
-          errorDesc.toLowerCase().includes('chat not found') ||
-          errorDesc.toLowerCase().includes('forbidden') ||
-          errorDesc.toLowerCase().includes('blocked')
-        ) {
-          showToast(`⚠️ Delivery failed: ${recipient.name} must open @Rani_alerts_bot and click START first!`, 'error');
-        } else {
-          showToast(`Test failed: ${errorDesc}`, 'error');
-        }
+        showToast(`Failed to send test to ${recipient.name}: ${res?.error || 'Check Chat ID or bot start status'}`, 'error');
       }
     } catch (err) {
-      showToast('Error sending test: ' + err.message, 'error');
+      showToast(`Error sending test: ${err.message}`, 'error');
     } finally {
       setTestingId(null);
     }
   };
 
-  // Test broadcast notification to ALL active recipients
+  // Broadcast test to all active recipients
   const handleTestBroadcast = async () => {
     setSendingTestAlert(true);
     try {
@@ -243,7 +319,7 @@ function SettingsPage({ userPermissions }) {
 
       const backupData = {
         app: 'Rani Salary MIS',
-        version: '2.2.0',
+        version: '2.3.0',
         exportedAt: new Date().toISOString(),
         exportedBy: currentUser?.email || 'Admin',
         allowedDepts: userPermissions.depts,
@@ -285,9 +361,11 @@ function SettingsPage({ userPermissions }) {
       sessionStorage.clear();
       const savedTheme = localStorage.getItem('sidebar_collapsed');
       const savedShop = localStorage.getItem('preferred_shop');
+      const savedSlip = localStorage.getItem('salary_slip_layout_config');
       localStorage.clear();
       if (savedTheme) localStorage.setItem('sidebar_collapsed', savedTheme);
       if (savedShop) localStorage.setItem('preferred_shop', savedShop);
+      if (savedSlip) localStorage.setItem('salary_slip_layout_config', savedSlip);
 
       setCacheCleared(true);
       showToast('Local cache & session data cleared!', 'info');
@@ -298,7 +376,7 @@ function SettingsPage({ userPermissions }) {
   };
 
   return (
-    <div style={{ maxWidth: '1020px', margin: '0 auto', paddingBottom: '40px' }}>
+    <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '50px' }}>
       {/* PAGE HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '14px' }}>
         <div>
@@ -307,23 +385,582 @@ function SettingsPage({ userPermissions }) {
             Settings & Preferences
           </h2>
           <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
-            Manage user profile, shop defaults, payroll configurations, backup, and Telegram notifications
+            Customize print slip layout and contents, Telegram alert recipients, shop defaults, and data backups
           </p>
         </div>
 
         <button
           onClick={handleSavePreferences}
           style={saveBtn}
-          title="Save all changes"
+          title="Save all general preferences"
         >
           <Check size={16} /> Save Preferences
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '26px' }}>
 
         {/* ========================================================================= */}
-        {/* TELEGRAM NOTIFICATION PEOPLE MANAGER (FEATURE + STEP-BY-STEP INSTRUCTIONS) */}
+        {/* PRINT SLIP LAYOUT & CONTENT CUSTOMIZER (FEATURE REQUEST)                  */}
+        {/* ========================================================================= */}
+        <div style={{ ...card, border: '1.5px solid #cbd5e1', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)' }}>
+          <div style={{ ...cardHeader, backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={cardIconContainer('#dbeafe')}>
+                <Printer size={19} color="#1d4ed8" />
+              </div>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  Print Salary Slip Layout & Content Editor
+                  <span style={{ fontSize: '11px', fontWeight: '700', backgroundColor: '#dcfce7', color: '#166534', padding: '2px 7px', borderRadius: '10px' }}>
+                    Live Preview
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                  Customize sheet layout, font style, color theme, title, headers, item labels, remarks, and signatures
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleResetSlipConfig}
+                style={secondaryBtn}
+                title="Reset to factory template"
+              >
+                <RotateCcw size={13} /> Reset Default
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintTestSlip}
+                style={secondaryBtn}
+                title="Print sample test slip to printer"
+              >
+                <Printer size={13} /> Print Test Slip
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSlipConfig}
+                disabled={savingSlipConfig}
+                style={{ ...saveBtn, padding: '7px 16px', fontSize: '12px' }}
+                title="Save slip design"
+              >
+                <Check size={14} /> {savingSlipConfig ? 'Saving...' : 'Save Slip Design'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ padding: '20px' }}>
+            {/* TWO-COLUMN LAYOUT: EDITOR CONTROLS ON LEFT, LIVE PREVIEW ON RIGHT */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+              gap: '24px',
+              alignItems: 'start'
+            }}>
+
+              {/* LEFT COLUMN: EDITING TABS & CONTROLS */}
+              <div>
+                {/* TAB SWITCHER */}
+                <div style={{
+                  display: 'flex',
+                  backgroundColor: '#f1f5f9',
+                  padding: '4px',
+                  borderRadius: '10px',
+                  marginBottom: '18px',
+                  gap: '4px'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setSlipEditorTab('layout')}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '7px',
+                      backgroundColor: slipEditorTab === 'layout' ? '#ffffff' : 'transparent',
+                      color: slipEditorTab === 'layout' ? '#1d4ed8' : '#64748b',
+                      boxShadow: slipEditorTab === 'layout' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <LayoutTemplate size={14} /> 1. Layout & Styling
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSlipEditorTab('content')}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '7px',
+                      backgroundColor: slipEditorTab === 'content' ? '#ffffff' : 'transparent',
+                      color: slipEditorTab === 'content' ? '#1d4ed8' : '#64748b',
+                      boxShadow: slipEditorTab === 'content' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Type size={14} /> 2. Slip Contents & Labels
+                  </button>
+                </div>
+
+                {/* TAB 1: LAYOUT & STYLING */}
+                {slipEditorTab === 'layout' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                    {/* Slips Per Page */}
+                    <div style={formGroup}>
+                      <label style={labelStyle}>
+                        Slips Per A4 Sheet
+                      </label>
+                      <select
+                        value={slipConfig.slipsPerPage}
+                        onChange={e => updateSlipConfig('slipsPerPage', Number(e.target.value))}
+                        style={selectStyle}
+                      >
+                        <option value={6}>6 Slips per Sheet (3 rows × 2 cols - Standard Pocket Slip)</option>
+                        <option value={4}>4 Slips per Sheet (2 rows × 2 cols - Medium Slip)</option>
+                        <option value={2}>2 Slips per Sheet (2 rows × 1 col - Half Page Voucher)</option>
+                        <option value={1}>1 Slip per Sheet (Full Page Statement)</option>
+                      </select>
+                      <span style={helperText}>Controls how many salary slips are fitted onto each printed A4 sheet.</span>
+                    </div>
+
+                    {/* Color Palette Theme */}
+                    <div style={formGroup}>
+                      <label style={labelStyle}>
+                        Color Theme
+                      </label>
+                      <select
+                        value={slipConfig.colorTheme}
+                        onChange={e => updateSlipConfig('colorTheme', e.target.value)}
+                        style={selectStyle}
+                      >
+                        <option value="colored">🎨 Classic Pastel (Peach title, Blue stats, Green addition, Mauve net)</option>
+                        <option value="monochrome">🖨️ Grayscale (Optimized for black-and-white laser printers & photocopies)</option>
+                        <option value="minimal">📄 Clean White & Black (Crisp white cells with sharp black borders)</option>
+                      </select>
+                      <span style={helperText}>Choose colors for screen preview and print ink output.</span>
+                    </div>
+
+                    {/* Font Family */}
+                    <div style={formGroup}>
+                      <label style={labelStyle}>
+                        Typography / Font Style
+                      </label>
+                      <select
+                        value={slipConfig.fontFamily}
+                        onChange={e => updateSlipConfig('fontFamily', e.target.value)}
+                        style={selectStyle}
+                      >
+                        <option value="serif">Times New Roman (Formal Accounting Serif)</option>
+                        <option value="sans">Modern Sans-Serif (Clean, contemporary system font)</option>
+                        <option value="mono">Courier New (Monospace typewriter / receipt style)</option>
+                      </select>
+                    </div>
+
+                    {/* Card Border Style */}
+                    <div style={formGroup}>
+                      <label style={labelStyle}>
+                        Card Border Style
+                      </label>
+                      <select
+                        value={slipConfig.borderStyle}
+                        onChange={e => updateSlipConfig('borderStyle', e.target.value)}
+                        style={selectStyle}
+                      >
+                        <option value="solid">Solid Line (1.5px standard border)</option>
+                        <option value="dashed">Dashed Line (Coupon / tear-off style)</option>
+                        <option value="double">Double Line (Formal accounting voucher)</option>
+                      </select>
+                    </div>
+
+                    {/* Signatures Row Toggle & Text */}
+                    <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Include Signature Lines at Bottom</div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>Adds signature lines for employee acknowledgement and cashier sign-off</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateSlipConfig('showSignatures', !slipConfig.showSignatures)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: slipConfig.showSignatures ? '#16a34a' : '#94a3b8' }}
+                        >
+                          {slipConfig.showSignatures ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                        </button>
+                      </div>
+
+                      {slipConfig.showSignatures && (
+                        <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>Left Signature Label</label>
+                            <input
+                              type="text"
+                              value={slipConfig.signatureLeftText}
+                              onChange={e => updateSlipConfig('signatureLeftText', e.target.value)}
+                              style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
+                              placeholder="e.g. Employee Signature"
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>Right Signature Label</label>
+                            <input
+                              type="text"
+                              value={slipConfig.signatureRightText}
+                              onChange={e => updateSlipConfig('signatureRightText', e.target.value)}
+                              style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
+                              placeholder="e.g. Authorized Signatory"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
+
+                {/* TAB 2: SLIP CONTENTS & LABELS */}
+                {slipEditorTab === 'content' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                    {/* Header Title */}
+                    <div style={formGroup}>
+                      <label style={labelStyle}>Report Title Text</label>
+                      <input
+                        type="text"
+                        value={slipConfig.titleText}
+                        onChange={e => updateSlipConfig('titleText', e.target.value)}
+                        placeholder="e.g. Salary Report or Rani Silks - Salary Slip"
+                        style={inputStyle}
+                      />
+                      <span style={helperText}>Topmost heading of each printed slip.</span>
+                    </div>
+
+                    {/* Subtitle / Company Heading */}
+                    <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>Show Subtitle / Shop Name</div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>Displays store name or branch right below the main title</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateSlipConfig('showSubTitle', !slipConfig.showSubTitle)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: slipConfig.showSubTitle ? '#16a34a' : '#94a3b8' }}
+                        >
+                          {slipConfig.showSubTitle ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                        </button>
+                      </div>
+
+                      {slipConfig.showSubTitle && (
+                        <div style={{ marginTop: '10px' }}>
+                          <input
+                            type="text"
+                            value={slipConfig.subTitleText}
+                            onChange={e => updateSlipConfig('subTitleText', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
+                            placeholder="e.g. Rani Silks & Readymades, Dharmapuri"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Employee Code & Stats Toggle */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={slipConfig.showEmployeeCode}
+                          onChange={e => updateSlipConfig('showEmployeeCode', e.target.checked)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span>Show Staff Code [RC-104]</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={slipConfig.showStatsRow}
+                          onChange={e => updateSlipConfig('showStatsRow', e.target.checked)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span>Show Days & Rate Row</span>
+                      </label>
+                    </div>
+
+                    {/* Column Headers: Addition & Deduction */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div style={formGroup}>
+                        <label style={labelStyle}>Addition Column Header</label>
+                        <input
+                          type="text"
+                          value={slipConfig.additionHeader}
+                          onChange={e => updateSlipConfig('additionHeader', e.target.value)}
+                          placeholder="e.g. Addition / Earnings"
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div style={formGroup}>
+                        <label style={labelStyle}>Deduction Column Header</label>
+                        <input
+                          type="text"
+                          value={slipConfig.deductionHeader}
+                          onChange={e => updateSlipConfig('deductionHeader', e.target.value)}
+                          placeholder="e.g. Deduction / Deductions"
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Addition Field Labels */}
+                    <div style={{ backgroundColor: '#f0fdf4', padding: '12px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#166534', marginBottom: '8px' }}>
+                        Addition Line Item Labels
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 1</label>
+                          <input
+                            type="text"
+                            value={slipConfig.incentiveLabel}
+                            onChange={e => updateSlipConfig('incentiveLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 2</label>
+                          <input
+                            type="text"
+                            value={slipConfig.lBonusLabel}
+                            onChange={e => updateSlipConfig('lBonusLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 3</label>
+                          <input
+                            type="text"
+                            value={slipConfig.rdAddLabel}
+                            onChange={e => updateSlipConfig('rdAddLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Deduction Field Labels */}
+                    <div style={{ backgroundColor: '#fff7ed', padding: '12px', borderRadius: '10px', border: '1px solid #fed7aa' }}>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#9a3412', marginBottom: '8px' }}>
+                        Deduction Line Item Labels
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '8px' }}>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 1</label>
+                          <input
+                            type="text"
+                            value={slipConfig.advanceLabel}
+                            onChange={e => updateSlipConfig('advanceLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 2</label>
+                          <input
+                            type="text"
+                            value={slipConfig.jBalanceLabel}
+                            onChange={e => updateSlipConfig('jBalanceLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 3</label>
+                          <input
+                            type="text"
+                            value={slipConfig.penaltyLabel}
+                            onChange={e => updateSlipConfig('penaltyLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 4</label>
+                          <input
+                            type="text"
+                            value={slipConfig.rdDedLabel}
+                            onChange={e => updateSlipConfig('rdDedLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 5</label>
+                          <input
+                            type="text"
+                            value={slipConfig.pfLabel}
+                            onChange={e => updateSlipConfig('pfLabel', e.target.value)}
+                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Overall Total & Net Salary Labels */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div style={formGroup}>
+                        <label style={labelStyle}>Overall Total Label</label>
+                        <input
+                          type="text"
+                          value={slipConfig.overallTotalHeader}
+                          onChange={e => updateSlipConfig('overallTotalHeader', e.target.value)}
+                          placeholder="Overall Total"
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div style={formGroup}>
+                        <label style={labelStyle}>Net Salary Label</label>
+                        <input
+                          type="text"
+                          value={slipConfig.netSalaryHeader}
+                          onChange={e => updateSlipConfig('netSalaryHeader', e.target.value)}
+                          placeholder="Net Salary"
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Remarks Section */}
+                    <div style={{ backgroundColor: '#eff6ff', padding: '12px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#1e3a8a' }}>Remarks Row</div>
+                          <div style={{ fontSize: '11px', color: '#3b82f6' }}>Shows remarks text at the bottom of the card</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateSlipConfig('showRemarksRow', !slipConfig.showRemarksRow)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: slipConfig.showRemarksRow ? '#16a34a' : '#94a3b8' }}
+                        >
+                          {slipConfig.showRemarksRow ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                        </button>
+                      </div>
+
+                      {slipConfig.showRemarksRow && (
+                        <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px' }}>
+                          <div>
+                            <label style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: '600' }}>Prefix Label</label>
+                            <input
+                              type="text"
+                              value={slipConfig.remarksPrefix}
+                              onChange={e => updateSlipConfig('remarksPrefix', e.target.value)}
+                              style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              placeholder="Remarks:"
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: '600' }}>Default Remark Value</label>
+                            <input
+                              type="text"
+                              value={slipConfig.defaultRemarksText}
+                              onChange={e => updateSlipConfig('defaultRemarksText', e.target.value)}
+                              style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              placeholder="GOOD"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT COLUMN: LIVE INTERACTIVE PREVIEW CARD */}
+              <div style={{
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                position: 'sticky',
+                top: '20px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                    <Eye size={16} color="#2563eb" />
+                    <span>Real-Time Slip Preview</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>
+                    Updates instantly as you type
+                  </div>
+                </div>
+
+                {/* THE LIVE SALARY REPORT CARD PREVIEW */}
+                <div style={{ backgroundColor: '#ffffff', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                  <SalaryReport
+                    data={[SAMPLE_PREVIEW_RECORD]}
+                    config={slipConfig}
+                    isPreview={true}
+                  />
+                </div>
+
+                {/* SUMMARY PILLS OF ACTIVE CONFIG */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px' }}>
+                  <span style={deptPill}>
+                    📄 {slipConfig.slipsPerPage} Slips/Sheet
+                  </span>
+                  <span style={deptPill}>
+                    🎨 {slipConfig.colorTheme}
+                  </span>
+                  <span style={deptPill}>
+                    🔤 {slipConfig.fontFamily}
+                  </span>
+                  {slipConfig.showSignatures && (
+                    <span style={{ ...deptPill, backgroundColor: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
+                      ✍️ Signatures Enabled
+                    </span>
+                  )}
+                </div>
+
+                {/* PRINT SAMPLE BUTTON */}
+                <button
+                  type="button"
+                  onClick={handlePrintTestSlip}
+                  style={{
+                    ...secondaryBtn,
+                    backgroundColor: '#ffffff',
+                    color: '#2563eb',
+                    borderColor: '#bfdbfe',
+                    padding: '8px 14px',
+                    fontSize: '12px',
+                    width: '100%',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Printer size={14} /> Print This Sample Card
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* TELEGRAM NOTIFICATION PEOPLE MANAGER                                      */}
         {/* ========================================================================= */}
         <div style={{ ...card, border: '1px solid #bfdbfe', boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.05)' }}>
           <div style={{ ...cardHeader, backgroundColor: '#eff6ff', borderBottom: '1px solid #dbeafe' }}>
@@ -449,33 +1086,22 @@ function SettingsPage({ userPermissions }) {
                       </p>
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <div style={stepNumberBadge}>4</div>
-                    <div>
-                      <strong>Click "Test" to Verify:</strong>
-                      <p style={{ margin: '2px 0 0 0', color: '#64748b' }}>
-                        Click the <strong>Test</strong> button next to their name. They will instantly receive a test notification on their Telegram!
-                      </p>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
 
-            {/* ADD PERSON FORM */}
+            {/* ADD RECIPIENT FORM */}
             <form onSubmit={handleAddRecipient} style={{
-              backgroundColor: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '16px',
-              display: 'flex',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr)) 150px 130px',
               gap: '12px',
-              alignItems: 'flex-end',
-              flexWrap: 'wrap',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+              alignItems: 'end',
+              backgroundColor: '#ffffff',
+              padding: '16px',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0'
             }}>
-              <div style={{ flex: '1 1 180px', minWidth: '160px' }}>
+              <div>
                 <label style={labelStyle}>Person / Role Name</label>
                 <input
                   type="text"
@@ -483,118 +1109,144 @@ function SettingsPage({ userPermissions }) {
                   value={newPersonName}
                   onChange={e => setNewPersonName(e.target.value)}
                   style={inputStyle}
+                  required
                 />
               </div>
 
-              <div style={{ flex: '1 1 180px', minWidth: '160px' }}>
-                <label style={labelStyle}>Telegram Chat ID</label>
+              <div>
+                <label style={labelStyle}>Numeric Telegram Chat ID</label>
                 <input
                   type="text"
-                  placeholder="e.g. 1377689327"
+                  placeholder="e.g. 1377689327 or -100..."
                   value={newChatId}
                   onChange={e => setNewChatId(e.target.value)}
                   style={inputStyle}
+                  required
                 />
               </div>
 
-              <div style={{ flex: '1 1 150px', minWidth: '130px' }}>
-                <label style={labelStyle}>Assigned Scope</label>
+              <div>
+                <label style={labelStyle}>Store Scope</label>
                 <select
                   value={newRole}
                   onChange={e => setNewRole(e.target.value)}
                   style={selectStyle}
                 >
                   <option value="All Shops">All Shops</option>
-                  <option value="Rani Javuli">Rani Javuli</option>
-                  <option value="Rani Readymade">Rani Readymade</option>
-                  <option value="New Rani">New Rani</option>
+                  {userPermissions?.depts?.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
               </div>
 
-              <button
-                type="submit"
-                disabled={addingRecipient}
-                style={{ ...saveBtn, padding: '10px 18px', height: '40px', flexShrink: 0 }}
-              >
-                <Plus size={16} />
-                {addingRecipient ? 'Adding...' : 'Add Person'}
-              </button>
+              <div>
+                <button
+                  type="submit"
+                  disabled={addingRecipient}
+                  style={{
+                    ...saveBtn,
+                    width: '100%',
+                    justifyContent: 'center',
+                    padding: '9px 14px',
+                    fontSize: '13px'
+                  }}
+                >
+                  <Plus size={15} /> {addingRecipient ? 'Adding...' : 'Add Person'}
+                </button>
+              </div>
             </form>
 
-            {/* RECIPIENTS LIST */}
-            <div style={{ marginTop: '10px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                CURRENT NOTIFICATION RECIPIENTS ({recipients.length + 1})
+            {/* LIST OF CURRENT RECIPIENTS */}
+            <div style={{ marginTop: '14px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Active Recipients ({recipients.length + 1})</span>
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>
+                  (Developer default + custom recipients)
+                </span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {/* 1. Default Built-in Developer Recipient */}
-                <div style={recipientRow}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                    <div style={recipientAvatar('#eff6ff', '#2563eb')}>
-                      DEV
-                    </div>
+                {/* Default Developer Recipient (Built-in) */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 14px',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '13px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#16a34a' }} />
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '13px' }}>
-                          Primary Developer Account
+                      <div style={{ fontWeight: '700', color: '#0f172a' }}>
+                        System Developer / Default Admin
+                        <span style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e2e8f0', color: '#475569', padding: '2px 6px', borderRadius: '4px' }}>
+                          Primary ID
                         </span>
-                        <span style={systemBadge}>Built-in Admin</span>
-                        <span style={deptPill}>All Shops</span>
                       </div>
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
-                        Chat ID: {TELEGRAM_CONFIG.devChatId}
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        Chat ID: <code>{TELEGRAM_CONFIG.devChatId || 'Configured via .env'}</code> • Scope: All Shops
                       </div>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
-                      onClick={() => handleTestSpecificRecipient({ name: 'Developer', chatId: TELEGRAM_CONFIG.devChatId, dept: 'All Shops' })}
-                      disabled={testingId === TELEGRAM_CONFIG.devChatId}
+                      onClick={handleTestBroadcast}
+                      disabled={sendingTestAlert}
                       style={testPillBtn}
-                      title="Send test notification to developer"
+                      title="Send test alert to primary developer"
                     >
                       <Send size={12} />
-                      {testingId === TELEGRAM_CONFIG.devChatId ? 'Testing...' : 'Test'}
+                      {sendingTestAlert ? 'Testing...' : 'Test'}
                     </button>
-                    <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', padding: '0 6px' }}>
-                      ✓ Always Active
-                    </span>
+                    <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '600' }}>Always Active</span>
                   </div>
                 </div>
 
-                {/* 2. Custom Added Recipients */}
+                {/* Custom Added Recipients */}
                 {recipients.map((person) => {
                   const isTesting = testingId === person.id;
                   const isEnabled = person.enabled !== false;
-                  const initials = (person.name || 'P')
-                    .split(' ')
-                    .map(w => w[0])
-                    .join('')
-                    .toUpperCase()
-                    .slice(0, 2);
 
                   return (
-                    <div key={person.id} style={{ ...recipientRow, opacity: isEnabled ? 1 : 0.65 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                        <div style={recipientAvatar(isEnabled ? '#f0fdf4' : '#f1f5f9', isEnabled ? '#16a34a' : '#64748b')}>
-                          {initials}
-                        </div>
+                    <div
+                      key={person.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 14px',
+                        backgroundColor: isEnabled ? '#ffffff' : '#f8fafc',
+                        borderRadius: '10px',
+                        border: `1px solid ${isEnabled ? '#cbd5e1' : '#e2e8f0'}`,
+                        fontSize: '13px',
+                        opacity: isEnabled ? 1 : 0.65
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          backgroundColor: isEnabled ? '#16a34a' : '#94a3b8'
+                        }} />
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '13px' }}>
-                              {person.name}
+                          <div style={{ fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {person.name}
+                            <span style={{ fontSize: '10px', backgroundColor: '#eff6ff', color: '#2563eb', padding: '1px 6px', borderRadius: '4px' }}>
+                              {person.dept || 'All Shops'}
                             </span>
-                            <span style={deptPill}>{person.dept || 'All Shops'}</span>
                             {!isEnabled && (
-                              <span style={{ ...systemBadge, backgroundColor: '#fef2f2', color: '#ef4444', borderColor: '#fecaca' }}>
+                              <span style={{ fontSize: '10px', backgroundColor: '#fee2e2', color: '#dc2626', padding: '1px 6px', borderRadius: '4px' }}>
                                 Paused
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
-                            Chat ID: {person.chatId}
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            Chat ID: <code>{person.chatId}</code> • Added by: {person.addedBy || 'Admin'}
                           </div>
                         </div>
                       </div>
@@ -745,15 +1397,15 @@ function SettingsPage({ userPermissions }) {
             </div>
           </div>
 
-          {/* SECTION 3: PAYROLL & SLIP DEFAULTS */}
+          {/* SECTION 3: PAYROLL DEFAULTS */}
           <div style={card}>
             <div style={cardHeader}>
               <div style={cardIconContainer('#fef3c7')}>
                 <FileText size={18} color="#d97706" />
               </div>
               <div>
-                <div style={cardTitle}>Payroll & Slip Defaults</div>
-                <div style={cardSubtitle}>Presets for salary slip printing and entry</div>
+                <div style={cardTitle}>Payroll & Entry Defaults</div>
+                <div style={cardSubtitle}>Presets for salary calculation and entry form</div>
               </div>
             </div>
 
@@ -783,16 +1435,16 @@ function SettingsPage({ userPermissions }) {
               </div>
 
               <div style={detailRow}>
-                <span style={detailLabel}>Print Layout Standard</span>
-                <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
-                  A4 Portrait (6 Slips per Sheet)
+                <span style={detailLabel}>Days Calculation</span>
+                <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>
+                  ✓ Dynamic Calendar Sync (28–31 days)
                 </span>
               </div>
 
               <div style={{ ...detailRow, borderBottom: 'none' }}>
-                <span style={detailLabel}>Days Calculation</span>
-                <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>
-                  ✓ Dynamic Calendar Sync (28–31 days)
+                <span style={detailLabel}>Print Layout Standard</span>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
+                  Customizable via Layout Editor Above
                 </span>
               </div>
             </div>
@@ -839,6 +1491,32 @@ function SettingsPage({ userPermissions }) {
         </div>
 
       </div>
+
+      {/* PRINT-ONLY AREA FOR TEST PRINT IN SETTINGS */}
+      <div className="print-only">
+        <SalaryReport
+          data={[SAMPLE_PREVIEW_RECORD]}
+          config={slipConfig}
+        />
+      </div>
+
+      <style>{`
+        .print-only {
+          display: none;
+        }
+        @media print {
+          .no-print, nav, header, aside, .sidebar {
+            display: none !important;
+          }
+          .print-only {
+            display: block !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -946,20 +1624,10 @@ const deptPill = {
   border: '1px solid #e2e8f0'
 };
 
-const systemBadge = {
-  fontSize: '10px',
-  fontWeight: '700',
-  color: '#1d4ed8',
-  backgroundColor: '#eff6ff',
-  border: '1px solid #bfdbfe',
-  padding: '2px 6px',
-  borderRadius: '4px'
-};
-
 const formGroup = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '6px'
+  gap: '5px'
 };
 
 const labelStyle = {
@@ -968,98 +1636,86 @@ const labelStyle = {
   color: '#334155'
 };
 
+const helperText = {
+  fontSize: '11px',
+  color: '#64748b',
+  marginTop: '2px'
+};
+
 const inputStyle = {
-  padding: '9px 12px',
-  fontSize: '13px',
-  color: '#0f172a',
-  backgroundColor: '#ffffff',
-  border: '1px solid #cbd5e1',
+  padding: '8px 12px',
   borderRadius: '8px',
+  border: '1px solid #cbd5e1',
+  fontSize: '13px',
   outline: 'none',
+  transition: 'border-color 0.15s ease',
   width: '100%',
   boxSizing: 'border-box'
 };
 
 const selectStyle = {
-  padding: '9px 12px',
-  fontSize: '13px',
-  color: '#0f172a',
+  ...inputStyle,
   backgroundColor: '#ffffff',
-  border: '1px solid #cbd5e1',
-  borderRadius: '8px',
-  outline: 'none',
-  width: '100%',
-  boxSizing: 'border-box',
   cursor: 'pointer'
 };
 
-const helperText = {
-  fontSize: '11px',
-  color: '#94a3b8'
-};
-
 const saveBtn = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
   backgroundColor: '#2563eb',
   color: '#ffffff',
   border: 'none',
+  padding: '8px 16px',
   borderRadius: '8px',
-  padding: '10px 18px',
   fontSize: '13px',
-  fontWeight: '700',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px',
-  boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-};
-
-const primaryActionBtn = {
-  backgroundColor: '#0f172a',
-  color: '#ffffff',
-  border: 'none',
-  borderRadius: '8px',
-  padding: '9px 14px',
-  fontSize: '12px',
   fontWeight: '600',
   cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px',
-  boxShadow: '0 1px 2px rgba(15,23,42,0.1)'
+  boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
+  transition: 'background-color 0.15s ease'
 };
 
 const secondaryBtn = {
-  backgroundColor: '#ffffff',
-  color: '#2563eb',
-  border: '1px solid #bfdbfe',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  backgroundColor: '#f8fafc',
+  color: '#475569',
+  border: '1px solid #cbd5e1',
+  padding: '7px 12px',
   borderRadius: '8px',
-  padding: '8px 14px',
   fontSize: '12px',
   fontWeight: '600',
   cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px'
+  textDecoration: 'none'
+};
+
+const primaryActionBtn = {
+  ...secondaryBtn,
+  backgroundColor: '#f1f5f9',
+  color: '#1e293b',
+  borderColor: '#cbd5e1'
 };
 
 const dangerBtn = {
-  backgroundColor: '#ffffff',
-  color: '#ef4444',
-  border: '1px solid #fecaca',
-  borderRadius: '8px',
-  padding: '9px 14px',
-  fontSize: '12px',
-  fontWeight: '600',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px'
+  ...secondaryBtn,
+  color: '#dc2626',
+  borderColor: '#fca5a5',
+  backgroundColor: '#fff'
 };
 
-const linkStyle = {
-  color: '#2563eb',
+const testPillBtn = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  fontSize: '11px',
   fontWeight: '600',
-  textDecoration: 'none'
+  padding: '3px 8px',
+  borderRadius: '6px',
+  border: '1px solid #cbd5e1',
+  backgroundColor: '#ffffff',
+  color: '#2563eb',
+  cursor: 'pointer'
 };
 
 const stepNumberBadge = {
@@ -1068,53 +1724,18 @@ const stepNumberBadge = {
   borderRadius: '50%',
   backgroundColor: '#2563eb',
   color: '#ffffff',
-  fontSize: '11px',
-  fontWeight: '700',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-  marginTop: '2px'
-};
-
-const recipientRow = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '10px 14px',
-  backgroundColor: '#ffffff',
-  border: '1px solid #e2e8f0',
-  borderRadius: '10px',
-  gap: '12px',
-  flexWrap: 'wrap'
-};
-
-const recipientAvatar = (bg, color) => ({
-  width: '32px',
-  height: '32px',
-  borderRadius: '50%',
-  backgroundColor: bg,
-  color: color,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   fontSize: '11px',
-  fontWeight: '700',
+  fontWeight: '800',
   flexShrink: 0
-});
+};
 
-const testPillBtn = {
-  backgroundColor: '#eff6ff',
-  color: '#1d4ed8',
-  border: '1px solid #bfdbfe',
-  padding: '4px 10px',
-  borderRadius: '6px',
-  fontSize: '11px',
+const linkStyle = {
+  color: '#2563eb',
   fontWeight: '600',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '4px'
+  textDecoration: 'none'
 };
 
 export default SettingsPage;
