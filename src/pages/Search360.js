@@ -1,8 +1,34 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { Search, Download, Calendar, User, Building2, RefreshCw, FileSpreadsheet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Search, Download, Calendar, User, Building2, RefreshCw, FileSpreadsheet, ArrowUpRight, ArrowDownRight, X, ArrowRight } from 'lucide-react';
 import { useToast } from '../components/Toast';
+
+// Helper to highlight matching text in search suggestions
+function HighlightMatch({ text, query }) {
+  if (!text) return null;
+  if (!query || !query.trim()) return <span>{text}</span>;
+
+  const q = query.trim().toLowerCase();
+  const lower = text.toLowerCase();
+  const index = lower.indexOf(q);
+
+  if (index === -1) return <span>{text}</span>;
+
+  const before = text.substring(0, index);
+  const matched = text.substring(index, index + q.length);
+  const after = text.substring(index + q.length);
+
+  return (
+    <span>
+      {before}
+      <span style={{ backgroundColor: '#fef08a', color: '#854d0e', fontWeight: '700', borderRadius: '2px', padding: '0 1px' }}>
+        {matched}
+      </span>
+      {after}
+    </span>
+  );
+}
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -31,6 +57,22 @@ function Search360({ userPermissions }) {
   const [selectedDept, setSelectedDept] = useState(isAdmin ? 'All' : defaultDept);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'salary' | 'advance'
+
+  // Search suggestions states
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const searchWrapperRef = useRef(null);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // 1. Fetch Employees
   useEffect(() => {
@@ -315,7 +357,100 @@ function Search360({ userPermissions }) {
     setSelectedYear(new Date().getFullYear().toString());
     setSelectedDept(isAdmin ? 'All' : defaultDept);
     setSearchTerm('');
+    setShowSuggestions(false);
     setActiveTab('all');
+  };
+
+  // Dynamic suggestions for Search360
+  const suggestions = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return [];
+
+    const list = [];
+    const seen = new Set();
+
+    employees.forEach(emp => {
+      if (emp.isDeleted) return;
+      const empCode = emp.employeeId || '';
+      const name = emp.name || '';
+      const dept = emp.dept || '';
+      const key = (empCode + '__' + name).toLowerCase();
+      if (seen.has(key)) return;
+
+      const nameMatch = name.toLowerCase().includes(term);
+      const codeMatch = empCode.toLowerCase().includes(term);
+      const deptMatch = dept.toLowerCase().includes(term);
+
+      if (nameMatch || codeMatch || deptMatch) {
+        seen.add(key);
+        const empSalaries = salaryRecords.filter(s => !s.isDeleted && (
+          s.employeeId === emp.id ||
+          (s.employeeCode && empCode && s.employeeCode.toUpperCase() === empCode.toUpperCase()) ||
+          (s.name && name && s.name.toUpperCase() === name.toUpperCase())
+        ));
+        const empAdvances = advances.filter(a => !a.isDeleted && (
+          a.employeeId === emp.id ||
+          (a.employeeCode && empCode && a.employeeCode.toUpperCase() === empCode.toUpperCase()) ||
+          (a.employeeName && name && a.employeeName.toUpperCase() === name.toUpperCase())
+        ));
+
+        list.push({
+          id: emp.id,
+          employeeId: empCode,
+          name: name,
+          dept: dept,
+          salaryCount: empSalaries.length,
+          advanceCount: empAdvances.length
+        });
+      }
+    });
+
+    list.sort((a, b) => {
+      const aExact = a.employeeId.toLowerCase() === term || a.name.toLowerCase() === term;
+      const bExact = b.employeeId.toLowerCase() === term || b.name.toLowerCase() === term;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+
+      const aStarts = a.name.toLowerCase().startsWith(term) || a.employeeId.toLowerCase().startsWith(term);
+      const bStarts = b.name.toLowerCase().startsWith(term) || b.employeeId.toLowerCase().startsWith(term);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+
+      return (b.salaryCount + b.advanceCount) - (a.salaryCount + a.advanceCount);
+    });
+
+    return list.slice(0, 8);
+  }, [searchTerm, employees, salaryRecords, advances]);
+
+  const handleSelectSuggestion = (suggestion) => {
+    setSelectedPerson(suggestion.id);
+    setSearchTerm(suggestion.name);
+    setShowSuggestions(false);
+    setActiveSuggestionIndex(-1);
+    showToast(`Filtered for ${suggestion.name}`, 'info');
+  };
+
+  const handleKeyDown = (e) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestionIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestionIndex(prev => (prev > 0 ? prev - 1 : suggestions.length - 1));
+    } else if (e.key === 'Enter') {
+      if (activeSuggestionIndex >= 0 && activeSuggestionIndex < suggestions.length) {
+        e.preventDefault();
+        handleSelectSuggestion(suggestions[activeSuggestionIndex]);
+      } else if (suggestions.length > 0) {
+        e.preventDefault();
+        handleSelectSuggestion(suggestions[0]);
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setActiveSuggestionIndex(-1);
+    }
   };
 
   const yearOptions = [
@@ -358,16 +493,177 @@ function Search360({ userPermissions }) {
 
       {/* FILTER TOOLBAR */}
       <div style={filterBar}>
-        {/* Search Bar */}
-        <div style={searchContainer}>
-          <Search size={16} color="#64748b" style={{ marginLeft: '12px' }} />
-          <input
-            type="text"
-            placeholder="Search by Employee ID, Name, or Notes..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={searchInput}
-          />
+        {/* Search Bar with Suggestions */}
+        <div ref={searchWrapperRef} style={{ position: 'relative', flex: '1 1 280px', minWidth: '220px' }}>
+          <div style={{
+            ...searchContainer,
+            border: showSuggestions ? '1px solid #2563eb' : '1px solid #cbd5e1',
+            boxShadow: showSuggestions ? '0 0 0 3px rgba(37, 99, 235, 0.1)' : 'none',
+            transition: 'border-color 0.15s, box-shadow 0.15s'
+          }}>
+            <Search size={16} color={showSuggestions ? '#2563eb' : '#64748b'} style={{ marginLeft: '12px', flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Search by Employee ID, Name, or Notes..."
+              value={searchTerm}
+              onChange={e => {
+                setSearchTerm(e.target.value);
+                setShowSuggestions(true);
+                setActiveSuggestionIndex(-1);
+              }}
+              onFocus={() => {
+                if (searchTerm.trim().length > 0) setShowSuggestions(true);
+              }}
+              onKeyDown={handleKeyDown}
+              style={searchInput}
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setShowSuggestions(false);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '6px 10px',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  outline: 'none'
+                }}
+                title="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Suggestions Dropdown */}
+          {showSuggestions && searchTerm.trim().length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: 'calc(100% + 6px)',
+              left: 0,
+              right: 0,
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+              zIndex: 50,
+              maxHeight: '320px',
+              overflowY: 'auto'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 14px',
+                backgroundColor: '#f8fafc',
+                borderBottom: '1px solid #f1f5f9',
+                fontSize: '11px',
+                fontWeight: '700',
+                color: '#64748b',
+                letterSpacing: '0.5px'
+              }}>
+                <span>MATCHING EMPLOYEES ({suggestions.length})</span>
+                <span style={{ fontSize: '10px', fontWeight: '500', color: '#94a3b8' }}>↑↓ to navigate, Enter</span>
+              </div>
+
+              {suggestions.length > 0 ? (
+                suggestions.map((item, idx) => {
+                  const isActive = idx === activeSuggestionIndex;
+                  const initials = (item.name || 'E')
+                    .split(' ')
+                    .map(w => w[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2);
+
+                  return (
+                    <div
+                      key={item.id || idx}
+                      onClick={() => handleSelectSuggestion(item)}
+                      onMouseEnter={() => setActiveSuggestionIndex(idx)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        borderBottom: idx === suggestions.length - 1 ? 'none' : '1px solid #f8fafc',
+                        backgroundColor: isActive ? '#f1f5f9' : '#ffffff',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.15s',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          backgroundColor: '#eff6ff',
+                          color: '#2563eb',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: '700',
+                          fontSize: '11px',
+                          flexShrink: 0
+                        }}>
+                          {initials}
+                        </div>
+
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '13px' }}>
+                              <HighlightMatch text={item.name} query={searchTerm} />
+                            </span>
+                            {item.employeeId && (
+                              <span style={{
+                                fontFamily: 'monospace',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                color: '#2563eb',
+                                backgroundColor: '#eff6ff',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                border: '1px solid #dbeafe'
+                              }}>
+                                <HighlightMatch text={item.employeeId} query={searchTerm} />
+                              </span>
+                            )}
+                            <span style={{
+                              fontSize: '10px',
+                              color: '#64748b',
+                              backgroundColor: '#f1f5f9',
+                              padding: '1px 6px',
+                              borderRadius: '4px'
+                            }}>
+                              {item.dept}
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: '11px', marginTop: '2px', color: '#64748b' }}>
+                            {item.salaryCount} salary slip{item.salaryCount !== 1 ? 's' : ''} • {item.advanceCount} advance{item.advanceCount !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <ArrowRight size={14} color="#94a3b8" />
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                  No employees found matching "{searchTerm}"
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={dropdownGroup}>

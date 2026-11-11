@@ -33,7 +33,6 @@ function SalaryProcessor({ userPermissions }) {
   const [days, setDays] = useState(30);
   const [incentive, setIncentive] = useState(0);
   const [lBonus, setLBonus] = useState(false);
-  const [ts, setTs] = useState(0);
   const [rdAdd, setRdAdd] = useState(0);
   const [pf, setPf] = useState(0);
   const [advance, setAdvance] = useState(0);
@@ -122,7 +121,7 @@ function SalaryProcessor({ userPermissions }) {
     ? (Number(days) === 30 ? baseSalary : Math.round((baseSalary / 30) * (Number(days) || 0)))
     : (baseSalary > 0 ? Math.round(baseSalary * (Number(days) || 0)) : 0);
   const lBonusAmount = lBonus ? dailyRateEquiv : 0;
-  const totalAdd = (Number(incentive) || 0) + lBonusAmount + (Number(ts) || 0) + (Number(rdAdd) || 0);
+  const totalAdd = (Number(incentive) || 0) + lBonusAmount + (Number(rdAdd) || 0);
   const totalDed = (Number(advance) || 0) + (Number(jBalance) || 0) + (Number(penalty) || 0) + (Number(rdDed) || 0) + (Number(pf) || 0);
   const gTotal = Math.round(fixedEarnings + totalAdd - totalDed);
 
@@ -176,7 +175,7 @@ function SalaryProcessor({ userPermissions }) {
         days: Number(days) || 0,
         incentive: Number(incentive) || 0,
         lBonus: Number(lBonusAmount) || 0,
-        ts: Number(ts) || 0,
+        ts: 0,
         rdAdd: Number(rdAdd) || 0,
         pf: Number(pf) || 0,
         advance: Number(advance) || 0,
@@ -196,7 +195,6 @@ function SalaryProcessor({ userPermissions }) {
       // Reset Form
       setIncentive(0);
       setLBonus(false);
-      setTs(0);
       setPenalty(0);
       setPf(0);
       setRdAdd(0);
@@ -312,7 +310,6 @@ function SalaryProcessor({ userPermissions }) {
               </label>
               <input type="checkbox" checked={lBonus} onChange={e => setLBonus(e.target.checked)} style={checkboxStyle} />
             </div>
-            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>TS Allowance</label><input type="number" min="0" value={ts} onChange={e => setTs(e.target.value)} style={input} /></div>
             <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>RD (Add)</label><input type="number" min="0" value={rdAdd} onChange={e => setRdAdd(e.target.value)} style={input} /></div>
           </div>
 
