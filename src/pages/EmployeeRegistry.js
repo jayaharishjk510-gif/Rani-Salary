@@ -156,12 +156,12 @@ function EmployeeRegistry({ userPermissions }) {
       if (currentEditingId) {
         // UPDATE EXISTING
         await updateDoc(doc(db, "employees", currentEditingId), data);
-        showNotification('Employee Updated ✅', `${empName}'s details have been updated.`);
+        showNotification('Employee Updated', `${empName}'s details have been updated.`);
         showToast(`${empName}'s details updated successfully.`, 'success');
       } else {
         // ADD NEW
         await addDoc(collection(db, "employees"), { ...data, createdAt: new Date() });
-        showNotification('Employee Added ✅', `${empName} has been added successfully.`);
+        showNotification('Employee Added', `${empName} has been added successfully.`);
         showToast(`${empName} added successfully.`, 'success');
       }
       setShowAdd(false);

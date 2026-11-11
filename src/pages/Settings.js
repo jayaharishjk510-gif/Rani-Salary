@@ -35,7 +35,10 @@ import {
   Type,
   LayoutTemplate,
   RotateCcw,
-  Eye
+  Eye,
+  Edit2,
+  X,
+  Lock
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import {
@@ -99,6 +102,8 @@ function SettingsPage({ userPermissions }) {
 
   // Print Slip Editor State
   const [slipConfig, setSlipConfig] = useState(() => getSavedSlipConfig());
+  const [isEditingSlip, setIsEditingSlip] = useState(false);
+  const [tempSlipConfig, setTempSlipConfig] = useState(() => getSavedSlipConfig());
   const [slipEditorTab, setSlipEditorTab] = useState('layout'); // 'layout' | 'content'
   const [savingSlipConfig, setSavingSlipConfig] = useState(false);
 
@@ -127,21 +132,35 @@ function SettingsPage({ userPermissions }) {
     return unsub;
   }, []);
 
-  // Update a single property in slipConfig
+  // Enter edit mode
+  const handleStartEditSlip = () => {
+    setTempSlipConfig({ ...slipConfig });
+    setIsEditingSlip(true);
+  };
+
+  // Cancel edit mode
+  const handleCancelEditSlip = () => {
+    setTempSlipConfig({ ...slipConfig });
+    setIsEditingSlip(false);
+    showToast('Cancelled layout edits.', 'info');
+  };
+
+  // Update a single property in tempSlipConfig while editing
   const updateSlipConfig = (key, value) => {
-    setSlipConfig(prev => ({ ...prev, [key]: value }));
+    setTempSlipConfig(prev => ({ ...prev, [key]: value }));
   };
 
   // Save print slip configuration to localStorage and Firestore
   const handleSaveSlipConfig = async () => {
     setSavingSlipConfig(true);
     try {
-      saveSlipConfigToStorage(slipConfig);
+      saveSlipConfigToStorage(tempSlipConfig);
+      setSlipConfig({ ...tempSlipConfig });
 
       // Also persist to Firestore so all managers share the custom layout
       try {
         await setDoc(doc(db, 'app_settings', 'print_slip'), {
-          ...slipConfig,
+          ...tempSlipConfig,
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser?.email || 'Admin'
         }, { merge: true });
@@ -149,6 +168,7 @@ function SettingsPage({ userPermissions }) {
         console.warn('Firestore print_slip sync skipped (offline or permissions):', fsErr);
       }
 
+      setIsEditingSlip(false);
       showToast('Print slip layout and contents saved successfully!', 'success');
     } catch (err) {
       showToast('Failed to save slip layout: ' + err.message, 'error');
@@ -161,7 +181,9 @@ function SettingsPage({ userPermissions }) {
   const handleResetSlipConfig = () => {
     if (window.confirm('Reset salary slip layout and all labels back to the original reference template?')) {
       const fresh = resetSlipConfigToDefault();
+      setTempSlipConfig(fresh);
       setSlipConfig(fresh);
+      setIsEditingSlip(false);
       showToast('Salary slip restored to default reference template.', 'info');
     }
   };
@@ -176,7 +198,7 @@ function SettingsPage({ userPermissions }) {
     localStorage.setItem('preferred_shop', preferredShop);
     localStorage.setItem('default_remarks', defaultRemarks.trim() || 'GOOD');
     localStorage.setItem('default_salary_type', defaultSalaryType);
-    showToast('Settings & preferences saved successfully!', 'success');
+    showToast('Settings and preferences saved successfully!', 'success');
   };
 
   // Add new person for Telegram notifications
@@ -245,14 +267,14 @@ function SettingsPage({ userPermissions }) {
     try {
       const nowIST = getISTDateTime();
       const msg = [
-        `🔔 <b>RANI SALARY - TEST NOTIFICATION</b>`,
+        `<b>[RANI SALARY - TEST NOTIFICATION]</b>`,
         ``,
         `Hello <b>${recipient.name}</b>,`,
         `This is a test notification confirming your Telegram setup is active!`,
         ``,
-        `🏪 <b>Shop:</b> ${recipient.dept || 'All Shops'}`,
-        `🕒 <b>Time:</b> ${nowIST} (IST)`,
-        `👤 <b>Triggered By:</b> <code>${currentUser?.email || 'Admin'}</code>`
+        `<b>Shop:</b> ${recipient.dept || 'All Shops'}`,
+        `<b>Time:</b> ${nowIST} (IST)`,
+        `<b>Triggered By:</b> <code>${currentUser?.email || 'Admin'}</code>`
       ].join('\n');
 
       const res = await sendTelegramMessage(msg, { targetChatIds: [recipient.chatId] });
@@ -274,12 +296,12 @@ function SettingsPage({ userPermissions }) {
     try {
       const nowIST = getISTDateTime();
       const msg = [
-        `🔔 <b>RANI SALARY - BROADCAST TEST</b>`,
+        `<b>[RANI SALARY - BROADCAST TEST]</b>`,
         ``,
-        `👤 <b>Triggered By:</b> <code>${currentUser?.email || 'Admin'}</code>`,
-        `🏪 <b>Shop:</b> ${preferredShop}`,
-        `🕒 <b>Time:</b> ${nowIST} (IST)`,
-        `✅ <b>Status:</b> System alert broadcast to all active managers and recipients!`
+        `<b>Triggered By:</b> <code>${currentUser?.email || 'Admin'}</code>`,
+        `<b>Shop:</b> ${preferredShop}`,
+        `<b>Time:</b> ${nowIST} (IST)`,
+        `<b>Status:</b> System alert broadcast to all active managers and recipients!`
       ].join('\n');
 
       const res = await sendTelegramMessage(msg);
@@ -319,7 +341,7 @@ function SettingsPage({ userPermissions }) {
 
       const backupData = {
         app: 'Rani Salary MIS',
-        version: '2.3.0',
+        version: '2.4.0',
         exportedAt: new Date().toISOString(),
         exportedBy: currentUser?.email || 'Admin',
         allowedDepts: userPermissions.depts,
@@ -368,12 +390,15 @@ function SettingsPage({ userPermissions }) {
       if (savedSlip) localStorage.setItem('salary_slip_layout_config', savedSlip);
 
       setCacheCleared(true);
-      showToast('Local cache & session data cleared!', 'info');
+      showToast('Local cache and session data cleared!', 'info');
       setTimeout(() => setCacheCleared(false), 3000);
     } catch (err) {
       showToast('Error clearing cache: ' + err.message, 'error');
     }
   };
+
+  // Active configuration currently reflected in preview
+  const activePreviewConfig = isEditingSlip ? tempSlipConfig : slipConfig;
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '50px' }}>
@@ -401,58 +426,90 @@ function SettingsPage({ userPermissions }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '26px' }}>
 
         {/* ========================================================================= */}
-        {/* PRINT SLIP LAYOUT & CONTENT CUSTOMIZER (FEATURE REQUEST)                  */}
+        {/* PRINT SLIP LAYOUT & CONTENT CUSTOMIZER (WITH EDIT BUTTON / LOCK WORKFLOW) */}
         {/* ========================================================================= */}
-        <div style={{ ...card, border: '1.5px solid #cbd5e1', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)' }}>
-          <div style={{ ...cardHeader, backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+        <div style={{ ...card, border: isEditingSlip ? '1.5px solid #2563eb' : '1.5px solid #cbd5e1', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)' }}>
+          <div style={{ ...cardHeader, backgroundColor: isEditingSlip ? '#eff6ff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={cardIconContainer('#dbeafe')}>
                 <Printer size={19} color="#1d4ed8" />
               </div>
               <div>
                 <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  Print Salary Slip Layout & Content Editor
-                  <span style={{ fontSize: '11px', fontWeight: '700', backgroundColor: '#dcfce7', color: '#166534', padding: '2px 7px', borderRadius: '10px' }}>
-                    Live Preview
-                  </span>
+                  Print Salary Slip Layout & Content
+                  {isEditingSlip ? (
+                    <span style={{ fontSize: '11px', fontWeight: '700', backgroundColor: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: '10px' }}>
+                      Editing Mode
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '11px', fontWeight: '600', backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Lock size={11} /> Saved
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  Customize sheet layout, font style, color theme, title, headers, item labels, remarks, and signatures
+                  {isEditingSlip
+                    ? 'Adjust the controls below. Changes update in the preview immediately.'
+                    : 'Click Edit Design to customize sheet layout, title, column headers, item labels, and signatures.'}
                 </div>
               </div>
             </div>
 
+            {/* ACTION BUTTONS HEADER */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={handleResetSlipConfig}
-                style={secondaryBtn}
-                title="Reset to factory template"
-              >
-                <RotateCcw size={13} /> Reset Default
-              </button>
-              <button
-                type="button"
-                onClick={handlePrintTestSlip}
-                style={secondaryBtn}
-                title="Print sample test slip to printer"
-              >
-                <Printer size={13} /> Print Test Slip
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveSlipConfig}
-                disabled={savingSlipConfig}
-                style={{ ...saveBtn, padding: '7px 16px', fontSize: '12px' }}
-                title="Save slip design"
-              >
-                <Check size={14} /> {savingSlipConfig ? 'Saving...' : 'Save Slip Design'}
-              </button>
+              {!isEditingSlip ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePrintTestSlip}
+                    style={secondaryBtn}
+                    title="Print sample test slip to printer"
+                  >
+                    <Printer size={13} /> Print Test Slip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStartEditSlip}
+                    style={saveBtn}
+                    title="Unlock and customize layout or labels"
+                  >
+                    <Edit2 size={14} /> Edit Design
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancelEditSlip}
+                    style={secondaryBtn}
+                    title="Cancel changes and lock editor"
+                  >
+                    <X size={13} /> Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetSlipConfig}
+                    style={secondaryBtn}
+                    title="Reset to factory template"
+                  >
+                    <RotateCcw size={13} /> Reset Default
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveSlipConfig}
+                    disabled={savingSlipConfig}
+                    style={{ ...saveBtn, padding: '7px 16px', fontSize: '12px' }}
+                    title="Save changes and lock editor"
+                  >
+                    <Check size={14} /> {savingSlipConfig ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
           <div style={{ padding: '20px' }}>
-            {/* TWO-COLUMN LAYOUT: EDITOR CONTROLS ON LEFT, LIVE PREVIEW ON RIGHT */}
+            {/* TWO-COLUMN DISPLAY: CONTROLS/OVERVIEW ON LEFT, LIVE PREVIEW ON RIGHT */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
@@ -460,429 +517,511 @@ function SettingsPage({ userPermissions }) {
               alignItems: 'start'
             }}>
 
-              {/* LEFT COLUMN: EDITING TABS & CONTROLS */}
+              {/* LEFT COLUMN: VIEW OVERVIEW OR EDITING CONTROLS */}
               <div>
-                {/* TAB SWITCHER */}
-                <div style={{
-                  display: 'flex',
-                  backgroundColor: '#f1f5f9',
-                  padding: '4px',
-                  borderRadius: '10px',
-                  marginBottom: '18px',
-                  gap: '4px'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setSlipEditorTab('layout')}
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
+                {!isEditingSlip ? (
+                  /* ================= READ-ONLY SUMMARY VIEW ================= */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      padding: '16px',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '7px',
-                      backgroundColor: slipEditorTab === 'layout' ? '#ffffff' : 'transparent',
-                      color: slipEditorTab === 'layout' ? '#1d4ed8' : '#64748b',
-                      boxShadow: slipEditorTab === 'layout' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <LayoutTemplate size={14} /> 1. Layout & Styling
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSlipEditorTab('content')}
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '7px',
-                      backgroundColor: slipEditorTab === 'content' ? '#ffffff' : 'transparent',
-                      color: slipEditorTab === 'content' ? '#1d4ed8' : '#64748b',
-                      boxShadow: slipEditorTab === 'content' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <Type size={14} /> 2. Slip Contents & Labels
-                  </button>
-                </div>
-
-                {/* TAB 1: LAYOUT & STYLING */}
-                {slipEditorTab === 'layout' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-                    {/* Slips Per Page */}
-                    <div style={formGroup}>
-                      <label style={labelStyle}>
-                        Slips Per A4 Sheet
-                      </label>
-                      <select
-                        value={slipConfig.slipsPerPage}
-                        onChange={e => updateSlipConfig('slipsPerPage', Number(e.target.value))}
-                        style={selectStyle}
-                      >
-                        <option value={6}>6 Slips per Sheet (3 rows × 2 cols - Standard Pocket Slip)</option>
-                        <option value={4}>4 Slips per Sheet (2 rows × 2 cols - Medium Slip)</option>
-                        <option value={2}>2 Slips per Sheet (2 rows × 1 col - Half Page Voucher)</option>
-                        <option value={1}>1 Slip per Sheet (Full Page Statement)</option>
-                      </select>
-                      <span style={helperText}>Controls how many salary slips are fitted onto each printed A4 sheet.</span>
-                    </div>
-
-                    {/* Color Palette Theme */}
-                    <div style={formGroup}>
-                      <label style={labelStyle}>
-                        Color Theme
-                      </label>
-                      <select
-                        value={slipConfig.colorTheme}
-                        onChange={e => updateSlipConfig('colorTheme', e.target.value)}
-                        style={selectStyle}
-                      >
-                        <option value="colored">🎨 Classic Pastel (Peach title, Blue stats, Green addition, Mauve net)</option>
-                        <option value="monochrome">🖨️ Grayscale (Optimized for black-and-white laser printers & photocopies)</option>
-                        <option value="minimal">📄 Clean White & Black (Crisp white cells with sharp black borders)</option>
-                      </select>
-                      <span style={helperText}>Choose colors for screen preview and print ink output.</span>
-                    </div>
-
-                    {/* Font Family */}
-                    <div style={formGroup}>
-                      <label style={labelStyle}>
-                        Typography / Font Style
-                      </label>
-                      <select
-                        value={slipConfig.fontFamily}
-                        onChange={e => updateSlipConfig('fontFamily', e.target.value)}
-                        style={selectStyle}
-                      >
-                        <option value="serif">Times New Roman (Formal Accounting Serif)</option>
-                        <option value="sans">Modern Sans-Serif (Clean, contemporary system font)</option>
-                        <option value="mono">Courier New (Monospace typewriter / receipt style)</option>
-                      </select>
-                    </div>
-
-                    {/* Card Border Style */}
-                    <div style={formGroup}>
-                      <label style={labelStyle}>
-                        Card Border Style
-                      </label>
-                      <select
-                        value={slipConfig.borderStyle}
-                        onChange={e => updateSlipConfig('borderStyle', e.target.value)}
-                        style={selectStyle}
-                      >
-                        <option value="solid">Solid Line (1.5px standard border)</option>
-                        <option value="dashed">Dashed Line (Coupon / tear-off style)</option>
-                        <option value="double">Double Line (Formal accounting voucher)</option>
-                      </select>
-                    </div>
-
-                    {/* Signatures Row Toggle & Text */}
-                    <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      flexDirection: 'column',
+                      gap: '12px'
+                    }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Include Signature Lines at Bottom</div>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>Adds signature lines for employee acknowledgement and cashier sign-off</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                          Current Print Configuration
                         </div>
                         <button
                           type="button"
-                          onClick={() => updateSlipConfig('showSignatures', !slipConfig.showSignatures)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: slipConfig.showSignatures ? '#16a34a' : '#94a3b8' }}
+                          onClick={handleStartEditSlip}
+                          style={{ ...secondaryBtn, padding: '4px 10px', fontSize: '11px', borderColor: '#bfdbfe', color: '#2563eb' }}
                         >
-                          {slipConfig.showSignatures ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                          <Edit2 size={12} /> Edit
                         </button>
                       </div>
 
-                      {slipConfig.showSignatures && (
-                        <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                          <div>
-                            <label style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>Left Signature Label</label>
-                            <input
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px' }}>
+                        <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Slip Title</span>
+                          <strong style={{ color: '#0f172a' }}>{slipConfig.titleText || 'Salary Report'}</strong>
+                        </div>
+                        <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Sheet Layout</span>
+                          <strong style={{ color: '#0f172a' }}>{slipConfig.slipsPerPage} Slips per A4 Page</strong>
+                        </div>
+                        <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Color Palette</span>
+                          <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{slipConfig.colorTheme}</strong>
+                        </div>
+                        <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Font Family</span>
+                          <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{slipConfig.fontFamily}</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: '12px', color: '#334155', borderTop: '1px solid #e2e8f0', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div>
+                          <strong>Section Headers:</strong> Addition: <em>"{slipConfig.additionHeader}"</em> | Deduction: <em>"{slipConfig.deductionHeader}"</em>
+                        </div>
+                        <div>
+                          <strong>Addition Items:</strong> {slipConfig.incentiveLabel}, {slipConfig.lBonusLabel}, {slipConfig.rdAddLabel}
+                        </div>
+                        <div>
+                          <strong>Deduction Items:</strong> {slipConfig.advanceLabel}, {slipConfig.jBalanceLabel}, {slipConfig.penaltyLabel}, {slipConfig.rdDedLabel}, {slipConfig.pfLabel}
+                        </div>
+                        <div>
+                          <strong>Signatures:</strong> {slipConfig.showSignatures ? `Enabled (${slipConfig.signatureLeftText} / ${slipConfig.signatureRightText})` : 'Disabled'}
+                        </div>
+                        <div>
+                          <strong>Remarks Row:</strong> {slipConfig.showRemarksRow ? `Enabled (${slipConfig.remarksPrefix} ${slipConfig.defaultRemarksText})` : 'Hidden'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleStartEditSlip}
+                      style={{
+                        ...saveBtn,
+                        width: '100%',
+                        justifyContent: 'center',
+                        padding: '10px',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <Edit2 size={15} /> Edit Slip Layout & Content
+                    </button>
+                  </div>
+                ) : (
+                  /* ================= EDITING CONTROLS ================= */
+                  <div>
+                    {/* TAB SWITCHER */}
+                    <div style={{
+                      display: 'flex',
+                      backgroundColor: '#f1f5f9',
+                      padding: '4px',
+                      borderRadius: '10px',
+                      marginBottom: '18px',
+                      gap: '4px'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setSlipEditorTab('layout')}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '7px',
+                          backgroundColor: slipEditorTab === 'layout' ? '#ffffff' : 'transparent',
+                          color: slipEditorTab === 'layout' ? '#1d4ed8' : '#64748b',
+                          boxShadow: slipEditorTab === 'layout' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <LayoutTemplate size={14} /> 1. Layout & Styling
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSlipEditorTab('content')}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '7px',
+                          backgroundColor: slipEditorTab === 'content' ? '#ffffff' : 'transparent',
+                          color: slipEditorTab === 'content' ? '#1d4ed8' : '#64748b',
+                          boxShadow: slipEditorTab === 'content' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <Type size={14} /> 2. Slip Contents & Labels
+                      </button>
+                    </div>
+
+                    {/* TAB 1: LAYOUT & STYLING */}
+                    {slipEditorTab === 'layout' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                        {/* Slips Per Page */}
+                        <div style={formGroup}>
+                          <label style={labelStyle}>
+                            Slips Per A4 Sheet
+                          </label>
+                          <select
+                            value={tempSlipConfig.slipsPerPage}
+                            onChange={e => updateSlipConfig('slipsPerPage', Number(e.target.value))}
+                            style={selectStyle}
+                          >
+                            <option value={6}>6 Slips per Sheet (3 rows x 2 cols - Standard Pocket Slip)</option>
+                            <option value={4}>4 Slips per Sheet (2 rows x 2 cols - Medium Slip)</option>
+                            <option value={2}>2 Slips per Sheet (2 rows x 1 col - Half Page Voucher)</option>
+                            <option value={1}>1 Slip per Sheet (Full Page Statement)</option>
+                          </select>
+                          <span style={helperText}>Controls how many salary slips are fitted onto each printed A4 sheet.</span>
+                        </div>
+
+                        {/* Color Palette Theme (No emojis) */}
+                        <div style={formGroup}>
+                          <label style={labelStyle}>
+                            Color Theme
+                          </label>
+                          <select
+                            value={tempSlipConfig.colorTheme}
+                            onChange={e => updateSlipConfig('colorTheme', e.target.value)}
+                            style={selectStyle}
+                          >
+                            <option value="colored">Classic Pastel (Peach title, Blue stats, Green addition, Mauve net)</option>
+                            <option value="monochrome">Grayscale (Optimized for black-and-white laser printers and photocopies)</option>
+                            <option value="minimal">Clean White and Black (Crisp white cells with sharp black borders)</option>
+                          </select>
+                          <span style={helperText}>Choose colors for screen preview and print ink output.</span>
+                        </div>
+
+                        {/* Font Family */}
+                        <div style={formGroup}>
+                          <label style={labelStyle}>
+                            Typography / Font Style
+                          </label>
+                          <select
+                            value={tempSlipConfig.fontFamily}
+                            onChange={e => updateSlipConfig('fontFamily', e.target.value)}
+                            style={selectStyle}
+                          >
+                            <option value="serif">Times New Roman (Formal Accounting Serif)</option>
+                            <option value="sans">Modern Sans-Serif (Clean, contemporary system font)</option>
+                            <option value="mono">Courier New (Monospace typewriter / receipt style)</option>
+                          </select>
+                        </div>
+
+                        {/* Card Border Style */}
+                        <div style={formGroup}>
+                          <label style={labelStyle}>
+                            Card Border Style
+                          </label>
+                          <select
+                            value={tempSlipConfig.borderStyle}
+                            onChange={e => updateSlipConfig('borderStyle', e.target.value)}
+                            style={selectStyle}
+                          >
+                            <option value="solid">Solid Line (1.5px standard border)</option>
+                            <option value="dashed">Dashed Line (Coupon / tear-off style)</option>
+                            <option value="double">Double Line (Formal accounting voucher)</option>
+                          </select>
+                        </div>
+
+                        {/* Signatures Row Toggle & Text */}
+                        <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Include Signature Lines at Bottom</div>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>Adds signature lines for employee acknowledgement and cashier sign-off</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => updateSlipConfig('showSignatures', !tempSlipConfig.showSignatures)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: tempSlipConfig.showSignatures ? '#16a34a' : '#94a3b8' }}
+                            >
+                              {tempSlipConfig.showSignatures ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                            </button>
+                          </div>
+
+                          {tempSlipConfig.showSignatures && (
+                            <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>Left Signature Label</label>
+                                <input
                               type="text"
-                              value={slipConfig.signatureLeftText}
+                              value={tempSlipConfig.signatureLeftText}
                               onChange={e => updateSlipConfig('signatureLeftText', e.target.value)}
                               style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
                               placeholder="e.g. Employee Signature"
                             />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>Right Signature Label</label>
-                            <input
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>Right Signature Label</label>
+                                <input
                               type="text"
-                              value={slipConfig.signatureRightText}
+                              value={tempSlipConfig.signatureRightText}
                               onChange={e => updateSlipConfig('signatureRightText', e.target.value)}
                               style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
                               placeholder="e.g. Authorized Signatory"
                             />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    )}
+
+                    {/* TAB 2: SLIP CONTENTS & LABELS */}
+                    {slipEditorTab === 'content' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                        {/* Header Title */}
+                        <div style={formGroup}>
+                          <label style={labelStyle}>Report Title Text</label>
+                          <input
+                            type="text"
+                            value={tempSlipConfig.titleText}
+                            onChange={e => updateSlipConfig('titleText', e.target.value)}
+                            placeholder="e.g. Salary Report or Rani Silks - Salary Slip"
+                            style={inputStyle}
+                          />
+                          <span style={helperText}>Topmost heading of each printed slip.</span>
+                        </div>
+
+                        {/* Subtitle / Company Heading */}
+                        <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>Show Subtitle / Shop Name</div>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>Displays store name or branch right below the main title</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => updateSlipConfig('showSubTitle', !tempSlipConfig.showSubTitle)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: tempSlipConfig.showSubTitle ? '#16a34a' : '#94a3b8' }}
+                            >
+                              {tempSlipConfig.showSubTitle ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                            </button>
                           </div>
-                        </div>
-                      )}
-                    </div>
 
-                  </div>
-                )}
-
-                {/* TAB 2: SLIP CONTENTS & LABELS */}
-                {slipEditorTab === 'content' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-                    {/* Header Title */}
-                    <div style={formGroup}>
-                      <label style={labelStyle}>Report Title Text</label>
-                      <input
-                        type="text"
-                        value={slipConfig.titleText}
-                        onChange={e => updateSlipConfig('titleText', e.target.value)}
-                        placeholder="e.g. Salary Report or Rani Silks - Salary Slip"
-                        style={inputStyle}
-                      />
-                      <span style={helperText}>Topmost heading of each printed slip.</span>
-                    </div>
-
-                    {/* Subtitle / Company Heading */}
-                    <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>Show Subtitle / Shop Name</div>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>Displays store name or branch right below the main title</div>
+                          {tempSlipConfig.showSubTitle && (
+                            <div style={{ marginTop: '10px' }}>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.subTitleText}
+                                onChange={e => updateSlipConfig('subTitleText', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
+                                placeholder="e.g. Rani Silks & Readymades, Dharmapuri"
+                              />
+                            </div>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => updateSlipConfig('showSubTitle', !slipConfig.showSubTitle)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: slipConfig.showSubTitle ? '#16a34a' : '#94a3b8' }}
-                        >
-                          {slipConfig.showSubTitle ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
-                        </button>
-                      </div>
 
-                      {slipConfig.showSubTitle && (
-                        <div style={{ marginTop: '10px' }}>
-                          <input
-                            type="text"
-                            value={slipConfig.subTitleText}
-                            onChange={e => updateSlipConfig('subTitleText', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
-                            placeholder="e.g. Rani Silks & Readymades, Dharmapuri"
-                          />
+                        {/* Employee Code & Stats Toggle */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={tempSlipConfig.showEmployeeCode}
+                              onChange={e => updateSlipConfig('showEmployeeCode', e.target.checked)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <span>Show Staff Code [RC-104]</span>
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={tempSlipConfig.showStatsRow}
+                              onChange={e => updateSlipConfig('showStatsRow', e.target.checked)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <span>Show Days & Rate Row</span>
+                          </label>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Employee Code & Stats Toggle */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={slipConfig.showEmployeeCode}
-                          onChange={e => updateSlipConfig('showEmployeeCode', e.target.checked)}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <span>Show Staff Code [RC-104]</span>
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#334155', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={slipConfig.showStatsRow}
-                          onChange={e => updateSlipConfig('showStatsRow', e.target.checked)}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <span>Show Days & Rate Row</span>
-                      </label>
-                    </div>
-
-                    {/* Column Headers: Addition & Deduction */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <div style={formGroup}>
-                        <label style={labelStyle}>Addition Column Header</label>
-                        <input
-                          type="text"
-                          value={slipConfig.additionHeader}
-                          onChange={e => updateSlipConfig('additionHeader', e.target.value)}
-                          placeholder="e.g. Addition / Earnings"
-                          style={inputStyle}
-                        />
-                      </div>
-                      <div style={formGroup}>
-                        <label style={labelStyle}>Deduction Column Header</label>
-                        <input
-                          type="text"
-                          value={slipConfig.deductionHeader}
-                          onChange={e => updateSlipConfig('deductionHeader', e.target.value)}
-                          placeholder="e.g. Deduction / Deductions"
-                          style={inputStyle}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Addition Field Labels */}
-                    <div style={{ backgroundColor: '#f0fdf4', padding: '12px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#166534', marginBottom: '8px' }}>
-                        Addition Line Item Labels
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 1</label>
-                          <input
-                            type="text"
-                            value={slipConfig.incentiveLabel}
-                            onChange={e => updateSlipConfig('incentiveLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 2</label>
-                          <input
-                            type="text"
-                            value={slipConfig.lBonusLabel}
-                            onChange={e => updateSlipConfig('lBonusLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 3</label>
-                          <input
-                            type="text"
-                            value={slipConfig.rdAddLabel}
-                            onChange={e => updateSlipConfig('rdAddLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Deduction Field Labels */}
-                    <div style={{ backgroundColor: '#fff7ed', padding: '12px', borderRadius: '10px', border: '1px solid #fed7aa' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#9a3412', marginBottom: '8px' }}>
-                        Deduction Line Item Labels
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '8px' }}>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 1</label>
-                          <input
-                            type="text"
-                            value={slipConfig.advanceLabel}
-                            onChange={e => updateSlipConfig('advanceLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 2</label>
-                          <input
-                            type="text"
-                            value={slipConfig.jBalanceLabel}
-                            onChange={e => updateSlipConfig('jBalanceLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 3</label>
-                          <input
-                            type="text"
-                            value={slipConfig.penaltyLabel}
-                            onChange={e => updateSlipConfig('penaltyLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 4</label>
-                          <input
-                            type="text"
-                            value={slipConfig.rdDedLabel}
-                            onChange={e => updateSlipConfig('rdDedLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 5</label>
-                          <input
-                            type="text"
-                            value={slipConfig.pfLabel}
-                            onChange={e => updateSlipConfig('pfLabel', e.target.value)}
-                            style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Overall Total & Net Salary Labels */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <div style={formGroup}>
-                        <label style={labelStyle}>Overall Total Label</label>
-                        <input
-                          type="text"
-                          value={slipConfig.overallTotalHeader}
-                          onChange={e => updateSlipConfig('overallTotalHeader', e.target.value)}
-                          placeholder="Overall Total"
-                          style={inputStyle}
-                        />
-                      </div>
-                      <div style={formGroup}>
-                        <label style={labelStyle}>Net Salary Label</label>
-                        <input
-                          type="text"
-                          value={slipConfig.netSalaryHeader}
-                          onChange={e => updateSlipConfig('netSalaryHeader', e.target.value)}
-                          placeholder="Net Salary"
-                          style={inputStyle}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Remarks Section */}
-                    <div style={{ backgroundColor: '#eff6ff', padding: '12px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#1e3a8a' }}>Remarks Row</div>
-                          <div style={{ fontSize: '11px', color: '#3b82f6' }}>Shows remarks text at the bottom of the card</div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => updateSlipConfig('showRemarksRow', !slipConfig.showRemarksRow)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: slipConfig.showRemarksRow ? '#16a34a' : '#94a3b8' }}
-                        >
-                          {slipConfig.showRemarksRow ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
-                        </button>
-                      </div>
-
-                      {slipConfig.showRemarksRow && (
-                        <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px' }}>
-                          <div>
-                            <label style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: '600' }}>Prefix Label</label>
+                        {/* Column Headers: Addition & Deduction */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div style={formGroup}>
+                            <label style={labelStyle}>Addition Column Header</label>
                             <input
                               type="text"
-                              value={slipConfig.remarksPrefix}
-                              onChange={e => updateSlipConfig('remarksPrefix', e.target.value)}
-                              style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                              placeholder="Remarks:"
+                              value={tempSlipConfig.additionHeader}
+                              onChange={e => updateSlipConfig('additionHeader', e.target.value)}
+                              placeholder="e.g. Addition / Earnings"
+                              style={inputStyle}
                             />
                           </div>
-                          <div>
-                            <label style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: '600' }}>Default Remark Value</label>
+                          <div style={formGroup}>
+                            <label style={labelStyle}>Deduction Column Header</label>
                             <input
                               type="text"
-                              value={slipConfig.defaultRemarksText}
-                              onChange={e => updateSlipConfig('defaultRemarksText', e.target.value)}
-                              style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
-                              placeholder="GOOD"
+                              value={tempSlipConfig.deductionHeader}
+                              onChange={e => updateSlipConfig('deductionHeader', e.target.value)}
+                              placeholder="e.g. Deduction / Deductions"
+                              style={inputStyle}
                             />
                           </div>
                         </div>
-                      )}
-                    </div>
 
+                        {/* Addition Field Labels */}
+                        <div style={{ backgroundColor: '#f0fdf4', padding: '12px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#166534', marginBottom: '8px' }}>
+                            Addition Line Item Labels
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 1</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.incentiveLabel}
+                                onChange={e => updateSlipConfig('incentiveLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 2</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.lBonusLabel}
+                                onChange={e => updateSlipConfig('lBonusLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#166534', fontWeight: '600' }}>Item 3</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.rdAddLabel}
+                                onChange={e => updateSlipConfig('rdAddLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Deduction Field Labels */}
+                        <div style={{ backgroundColor: '#fff7ed', padding: '12px', borderRadius: '10px', border: '1px solid #fed7aa' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#9a3412', marginBottom: '8px' }}>
+                            Deduction Line Item Labels
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 1</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.advanceLabel}
+                                onChange={e => updateSlipConfig('advanceLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 2</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.jBalanceLabel}
+                                onChange={e => updateSlipConfig('jBalanceLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 3</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.penaltyLabel}
+                                onChange={e => updateSlipConfig('penaltyLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 4</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.rdDedLabel}
+                                onChange={e => updateSlipConfig('rdDedLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>Item 5</label>
+                              <input
+                                type="text"
+                                value={tempSlipConfig.pfLabel}
+                                onChange={e => updateSlipConfig('pfLabel', e.target.value)}
+                                style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Overall Total & Net Salary Labels */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div style={formGroup}>
+                            <label style={labelStyle}>Overall Total Label</label>
+                            <input
+                              type="text"
+                              value={tempSlipConfig.overallTotalHeader}
+                              onChange={e => updateSlipConfig('overallTotalHeader', e.target.value)}
+                              placeholder="Overall Total"
+                              style={inputStyle}
+                            />
+                          </div>
+                          <div style={formGroup}>
+                            <label style={labelStyle}>Net Salary Label</label>
+                            <input
+                              type="text"
+                              value={tempSlipConfig.netSalaryHeader}
+                              onChange={e => updateSlipConfig('netSalaryHeader', e.target.value)}
+                              placeholder="Net Salary"
+                              style={inputStyle}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Remarks Section */}
+                        <div style={{ backgroundColor: '#eff6ff', padding: '12px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#1e3a8a' }}>Remarks Row</div>
+                              <div style={{ fontSize: '11px', color: '#3b82f6' }}>Shows remarks text at the bottom of the card</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => updateSlipConfig('showRemarksRow', !tempSlipConfig.showRemarksRow)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: tempSlipConfig.showRemarksRow ? '#16a34a' : '#94a3b8' }}
+                            >
+                              {tempSlipConfig.showRemarksRow ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                            </button>
+                          </div>
+
+                          {tempSlipConfig.showRemarksRow && (
+                            <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px' }}>
+                              <div>
+                                <label style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: '600' }}>Prefix Label</label>
+                                <input
+                                  type="text"
+                                  value={tempSlipConfig.remarksPrefix}
+                                  onChange={e => updateSlipConfig('remarksPrefix', e.target.value)}
+                                  style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                                  placeholder="Remarks:"
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: '600' }}>Default Remark Value</label>
+                                <input
+                                  type="text"
+                                  value={tempSlipConfig.defaultRemarksText}
+                                  onChange={e => updateSlipConfig('defaultRemarksText', e.target.value)}
+                                  style={{ ...inputStyle, fontSize: '12px', padding: '5px 8px' }}
+                                  placeholder="GOOD"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -905,7 +1044,7 @@ function SettingsPage({ userPermissions }) {
                     <span>Real-Time Slip Preview</span>
                   </div>
                   <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>
-                    Updates instantly as you type
+                    {isEditingSlip ? 'Updates instantly as you edit' : 'Current active template'}
                   </div>
                 </div>
 
@@ -913,25 +1052,25 @@ function SettingsPage({ userPermissions }) {
                 <div style={{ backgroundColor: '#ffffff', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                   <SalaryReport
                     data={[SAMPLE_PREVIEW_RECORD]}
-                    config={slipConfig}
+                    config={activePreviewConfig}
                     isPreview={true}
                   />
                 </div>
 
-                {/* SUMMARY PILLS OF ACTIVE CONFIG */}
+                {/* SUMMARY PILLS OF ACTIVE CONFIG (NO EMOJIS) */}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px' }}>
                   <span style={deptPill}>
-                    📄 {slipConfig.slipsPerPage} Slips/Sheet
+                    {activePreviewConfig.slipsPerPage} Slips/Sheet
                   </span>
-                  <span style={deptPill}>
-                    🎨 {slipConfig.colorTheme}
+                  <span style={{ ...deptPill, textTransform: 'capitalize' }}>
+                    Theme: {activePreviewConfig.colorTheme}
                   </span>
-                  <span style={deptPill}>
-                    🔤 {slipConfig.fontFamily}
+                  <span style={{ ...deptPill, textTransform: 'capitalize' }}>
+                    Font: {activePreviewConfig.fontFamily}
                   </span>
-                  {slipConfig.showSignatures && (
+                  {activePreviewConfig.showSignatures && (
                     <span style={{ ...deptPill, backgroundColor: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
-                      ✍️ Signatures Enabled
+                      Signatures: Enabled
                     </span>
                   )}
                 </div>
@@ -1353,7 +1492,7 @@ function SettingsPage({ userPermissions }) {
               <div style={{ ...detailRow, borderBottom: 'none' }}>
                 <span style={detailLabel}>System Capabilities</span>
                 <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>
-                  ✓ Edit, Process, & Print Enabled
+                  Edit, Process, & Print Enabled
                 </span>
               </div>
             </div>
@@ -1437,7 +1576,7 @@ function SettingsPage({ userPermissions }) {
               <div style={detailRow}>
                 <span style={detailLabel}>Days Calculation</span>
                 <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>
-                  ✓ Dynamic Calendar Sync (28–31 days)
+                  Dynamic Calendar Sync (28-31 days)
                 </span>
               </div>
 
