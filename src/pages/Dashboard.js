@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Users, TrendingUp, Landmark } from 'lucide-react';
+import { getCurrentMonth, getCurrentYear, getMonthDateRange } from '../utils/dateUtils';
 
 function Dashboard({ userPermissions }) {
   // Track current month and year for correct filtering
-  const now = new Date();
-  const currentMonth = now.toLocaleString('default', { month: 'long' });
-  const currentYear = now.getFullYear().toString();
+  const currentMonth = getCurrentMonth();
+  const currentYear = getCurrentYear();
 
   const [employees, setEmployees] = useState([]);
   const [advances, setAdvances] = useState([]);
@@ -35,12 +35,7 @@ function Dashboard({ userPermissions }) {
     });
 
     // 2. Listen to Advances — filtered to current month and department
-    const monthIndex = now.getMonth(); // 0-based
-    const yearNum = now.getFullYear();
-    const pad = (num) => String(num).padStart(2, '0');
-    const startDate = `${yearNum}-${pad(monthIndex + 1)}-01`;
-    const lastDay = new Date(yearNum, monthIndex + 1, 0).getDate();
-    const endDate = `${yearNum}-${pad(monthIndex + 1)}-${pad(lastDay)}`;
+    const { startDate, endDate } = getMonthDateRange(currentMonth, currentYear);
 
     const advQuery = query(
       collection(db, "advances"),

@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Search, Download, Calendar, User, Building2, RefreshCw, FileSpreadsheet, ArrowUpRight, ArrowDownRight, X, ArrowRight } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { MONTHS, parseDateToMonthYear as parseAdvanceDate } from '../utils/dateUtils';
 
 // Helper to highlight matching text in search suggestions
 function HighlightMatch({ text, query }) {
@@ -29,11 +30,6 @@ function HighlightMatch({ text, query }) {
     </span>
   );
 }
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
 
 function Search360({ userPermissions }) {
   const { showToast } = useToast();
@@ -137,17 +133,6 @@ function Search360({ userPermissions }) {
     });
     return map;
   }, [employees]);
-
-  // Helper to extract month name and year from advance YYYY-MM-DD
-  const parseAdvanceDate = (dateStr) => {
-    if (!dateStr) return { monthName: '', year: '' };
-    const parts = dateStr.split('-');
-    if (parts.length < 2) return { monthName: '', year: '' };
-    const y = parts[0];
-    const mNum = parseInt(parts[1], 10);
-    const mName = (mNum >= 1 && mNum <= 12) ? MONTHS[mNum - 1] : '';
-    return { monthName: mName, year: y };
-  };
 
   // Filtered Salary Records
   const filteredSalaries = useMemo(() => {

@@ -4,11 +4,7 @@ import { collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, where }
 import { IndianRupee, Calendar, User, FileText, Download, Archive, Filter } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
-
-const getCurrentMonthStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
+import { getCurrentMonthStr } from '../utils/dateUtils';
 
 function AdvanceTracker({ userPermissions }) {
   const { showToast } = useToast();
@@ -342,7 +338,18 @@ function AdvanceTracker({ userPermissions }) {
                       </td>
                       <td style={{ ...tdStyle, fontWeight: '600', color: '#0f172a' }}>{adv.employeeName}</td>
                       <td style={tdStyle}>{adv.dept}</td>
-                      <td style={{ ...tdStyle, color: '#ef4444', fontWeight: '700' }}>₹{adv.amount.toLocaleString()}</td>
+                      <td style={{ ...tdStyle, color: '#ef4444', fontWeight: '700' }}>
+                        ₹{adv.amount.toLocaleString()}
+                        {adv.isSettled ? (
+                          <span style={{ fontSize: '10px', backgroundColor: '#dcfce7', color: '#166534', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', fontWeight: '600' }} title={`Deducted in salary slip (${adv.settledMonth || ''} ${adv.settledYear || ''})`}>
+                            Settled
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '10px', backgroundColor: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', fontWeight: '600' }} title="Pending salary deduction">
+                            Pending
+                          </span>
+                        )}
+                      </td>
                       <td style={{ ...tdStyle, color: adv.notes ? '#475569' : '#94a3b8', fontStyle: adv.notes ? 'normal' : 'italic' }}>
                         {adv.notes || 'No notes'}
                       </td>

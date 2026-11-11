@@ -1,22 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, doc, writeBatch } from 'firebase/firestore';
 import { Save, CheckCircle, Clock, Archive } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
 import { notifySalaryProcessed } from '../services/telegramService';
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
-
-const getDaysInMonth = (monthName, yearVal) => {
-  const monthIndex = MONTHS.indexOf(monthName);
-  const yearNum = Number(yearVal) || new Date().getFullYear();
-  if (monthIndex === -1) return 30;
-  return new Date(yearNum, monthIndex + 1, 0).getDate();
-};
+import { getDaysInMonth, getMonthDateRange } from '../utils/dateUtils';
 
 function SalaryProcessor({ userPermissions }) {
   const { showToast } = useToast();
@@ -109,13 +98,7 @@ function SalaryProcessor({ userPermissions }) {
   useEffect(() => {
     const fetchAdv = async () => {
       if (!selectedEmpId) return;
-      const monthIndex = ['January','February','March','April','May','June',
-        'July','August','September','October','November','December'].indexOf(month);
-      const yearNum = Number(year);
-      const pad = (num) => String(num).padStart(2, '0');
-      const startDate = `${yearNum}-${pad(monthIndex + 1)}-01`;
-      const lastDay = new Date(yearNum, monthIndex + 1, 0).getDate();
-      const endDate = `${yearNum}-${pad(monthIndex + 1)}-${pad(lastDay)}`;
+      const { startDate, endDate } = getMonthDateRange(month, year);
 
       const emp = employees.find(e => e.id === selectedEmpId);
       if (!emp) return;
@@ -190,8 +173,32 @@ function SalaryProcessor({ userPermissions }) {
         console.warn("Duplicate query check skipped:", checkErr);
       }
 
-      // Strictly cast all numeric fields to Numbers
-      await addDoc(collection(db, "salary_records"), {
+      // Deterministic document ID prevents duplicate records at the database level
+      const cleanDept = (selectedEmp.dept || 'Default').replace(/[^a-zA-Z0-9]/g, '_');
+      const docId = `sal_${cleanDept}_${selectedEmpId}_${year}_${month}`;
+      const recordRef = doc(db, "salary_records", docId);
+
+      // Query active advances for this employee in this month to link them atomically
+      const { startDate, endDate } = getMonthDateRange(month, year);
+      let activeAdvDocs = [];
+      try {
+        const advQ = query(
+          collection(db, "advances"),
+          where("employeeId", "==", selectedEmpId),
+          where("dept", "==", selectedEmp.dept),
+          where("date", ">=", startDate),
+          where("date", "<=", endDate)
+        );
+        const advSnap = await getDocs(advQ);
+        activeAdvDocs = advSnap.docs.filter(d => !d.data().isDeleted);
+      } catch (advFetchErr) {
+        console.warn("Could not fetch advance docs for linking:", advFetchErr);
+      }
+
+      // Execute atomic batch: set deterministic salary record and mark linked advances as settled
+      const batch = writeBatch(db);
+
+      batch.set(recordRef, {
         employeeId: selectedEmpId,
         employeeCode: selectedEmp.employeeId || '',
         name: selectedEmp.name,
@@ -218,6 +225,19 @@ function SalaryProcessor({ userPermissions }) {
         createdAt: new Date(),
         isDeleted: false
       });
+
+      // Mark linked advances as settled in this salary slip
+      activeAdvDocs.forEach(advDoc => {
+        batch.update(doc(db, "advances", advDoc.id), {
+          isSettled: true,
+          settledInSalaryId: docId,
+          settledMonth: month,
+          settledYear: year,
+          settledAt: new Date().toISOString()
+        });
+      });
+
+      await batch.commit();
 
       // Reset Form
       setDays(daysInMonth);
@@ -256,10 +276,33 @@ function SalaryProcessor({ userPermissions }) {
     setConfirmModal({ isOpen: false, record: null });
 
     try {
-      await updateDoc(doc(db, "salary_records", record.id), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "salary_records", record.id), {
         isDeleted: true,
         deletedAt: new Date().toISOString()
       });
+
+      // Un-settle any advances linked to this archived salary record
+      try {
+        const linkedAdvQ = query(
+          collection(db, "advances"),
+          where("settledInSalaryId", "==", record.id)
+        );
+        const linkedAdvSnap = await getDocs(linkedAdvQ);
+        linkedAdvSnap.docs.forEach(advDoc => {
+          batch.update(doc(db, "advances", advDoc.id), {
+            isSettled: false,
+            settledInSalaryId: null,
+            settledMonth: null,
+            settledYear: null,
+            unsettledAt: new Date().toISOString()
+          });
+        });
+      } catch (advErr) {
+        console.warn("Could not un-link advances:", advErr);
+      }
+
+      await batch.commit();
       showToast(`Salary record for ${record.name} safely archived.`, 'info');
     } catch (err) {
       showToast("Archive failed: " + err.message, 'error');

@@ -1,8 +1,72 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.email.lower() == 'admin@rani.com';
+    }
+
+    function isJavuliManager() {
+      return isAuthenticated() && (request.auth.token.email.lower() == 'javuli@rani.com' || isAdmin());
+    }
+
+    function isReadymadeManager() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() == 'readymade@rani.com' ||
+        request.auth.token.email.lower() == 'readymades@rani.com' ||
+        isAdmin()
+      );
+    }
+
+    function isNewRaniManager() {
+      return isAuthenticated() && (request.auth.token.email.lower() == 'newrani@rani.com' || isAdmin());
+    }
+
+    function canAccessDept(dept) {
+      return isAdmin() ||
+        (dept == 'Rani Javuli' && isJavuliManager()) ||
+        (dept == 'Rani Readymade' && isReadymadeManager()) ||
+        (dept == 'New Rani' && isNewRaniManager());
+    }
+
+    // App Settings (print slip layout, app configs)
+    match /app_settings/{document} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Telegram Notification Recipients
+    match /telegram_recipients/{recipientId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Employees Collection
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated() && (resource == null || canAccessDept(resource.data.dept));
+      allow create: if isAuthenticated() && canAccessDept(request.resource.data.dept);
+      allow update, delete: if isAuthenticated() && canAccessDept(resource.data.dept);
+    }
+
+    // Salary Records Collection
+    match /salary_records/{recordId} {
+      allow read: if isAuthenticated() && (resource == null || canAccessDept(resource.data.dept));
+      allow create: if isAuthenticated() && canAccessDept(request.resource.data.dept);
+      allow update, delete: if isAuthenticated() && canAccessDept(resource.data.dept);
+    }
+
+    // Advances Collection
+    match /advances/{advanceId} {
+      allow read: if isAuthenticated() && (resource == null || canAccessDept(resource.data.dept));
+      allow create: if isAuthenticated() && canAccessDept(request.resource.data.dept);
+      allow update, delete: if isAuthenticated() && canAccessDept(resource.data.dept);
+    }
+
+    // Catch-all authenticated access for any unlisted collections
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
   }
 }

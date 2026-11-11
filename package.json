@@ -7,8 +7,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
-    "dexie": "^4.4.4",
-    "dexie-react-hooks": "^4.4.0",
     "firebase": "^12.17.1",
     "lucide-react": "^1.28.0",
     "react": "^19.2.5",

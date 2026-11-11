@@ -4,11 +4,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import SalaryReport from '../SalaryReport';
 import { Printer, Search, RefreshCw, Download, X, ArrowRight, AlertCircle } from 'lucide-react';
 import { useToast } from '../components/Toast';
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+import { MONTHS } from '../utils/dateUtils';
 
 // Helper to highlight matching text in search suggestions
 function HighlightMatch({ text, query }) {
