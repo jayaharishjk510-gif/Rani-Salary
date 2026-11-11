@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, Download, X } from 'lucide-react';
+import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, Download, X, Settings } from 'lucide-react';
 import { notifyLogin } from './services/telegramService';
 import NetworkStatus from './components/NetworkStatus';
 import PWAUpdateToast from './components/PWAUpdateToast';
@@ -15,6 +15,7 @@ import AdvanceTracker from './pages/AdvanceTracker';
 import SalaryProcessor from './pages/SalaryProcessor';
 import ReportPreview from './pages/ReportPreview';
 import Search360 from './pages/Search360';
+import SettingsPage from './pages/Settings';
 import NotFound from './pages/NotFound';
 import AccessDenied from './components/AccessDenied';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -370,6 +371,9 @@ function App() {
               <NavLink to="/search-360" onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="360 Search">
                 <Search size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>360 Search</span>}
               </NavLink>
+              <NavLink to="/settings" onClick={() => isMobile && setMobileMenuOpen(false)} style={({ isActive }) => ({ ...navLink, ...(isActive ? navLinkActive : {}), ...(!isMobile && collapsed ? { justifyContent: 'center', padding: '12px 0' } : {}) })} title="Settings">
+                <Settings size={18} style={{ flexShrink: 0 }} /> {(isMobile || !collapsed) && <span style={{ whiteSpace: 'nowrap' }}>Settings</span>}
+              </NavLink>
             </div>
 
             {/* STATIC PINNED BOTTOM ACTIONS */}
@@ -437,6 +441,7 @@ function App() {
                 <Route path="/salary" element={<SalaryProcessor userPermissions={userPermissions} />} />
                 <Route path="/reports" element={<ReportPreview userPermissions={userPermissions} />} />
                 <Route path="/search-360" element={<Search360 userPermissions={userPermissions} />} />
+                <Route path="/settings" element={<SettingsPage userPermissions={userPermissions} />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </ErrorBoundary>
