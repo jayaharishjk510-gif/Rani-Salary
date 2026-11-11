@@ -5,6 +5,18 @@ import { Save, CheckCircle, Clock, Archive } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+const getDaysInMonth = (monthName, yearVal) => {
+  const monthIndex = MONTHS.indexOf(monthName);
+  const yearNum = Number(yearVal) || new Date().getFullYear();
+  if (monthIndex === -1) return 30;
+  return new Date(yearNum, monthIndex + 1, 0).getDate();
+};
+
 function SalaryProcessor({ userPermissions }) {
   const { showToast } = useToast();
   const [employees, setEmployees] = useState([]);
@@ -25,12 +37,26 @@ function SalaryProcessor({ userPermissions }) {
   const [month, setMonth] = useState(() => now.toLocaleString('default', { month: 'long' }));
   const [year, setYear] = useState(() => now.getFullYear().toString());
 
+  // Calculate days in the selected month & year
+  const daysInMonth = useMemo(() => {
+    return getDaysInMonth(month, year);
+  }, [month, year]);
+
   // Filter lists to exclude soft-deleted records
   const visibleEmployees = employees.filter(e => !e.isDeleted);
   const visibleSalaryRecords = salaryRecords.filter(r => !r.isDeleted);
 
-  // Input States
-  const [days, setDays] = useState(30);
+  // Input States - initialized to the days in the current selected month
+  const [days, setDays] = useState(() => getDaysInMonth(
+    now.toLocaleString('default', { month: 'long' }),
+    now.getFullYear().toString()
+  ));
+
+  // Automatically update days worked when month or year changes
+  useEffect(() => {
+    setDays(daysInMonth);
+  }, [daysInMonth]);
+
   const [incentive, setIncentive] = useState(0);
   const [lBonus, setLBonus] = useState(false);
   const [rdAdd, setRdAdd] = useState(0);
@@ -116,9 +142,9 @@ function SalaryProcessor({ userPermissions }) {
   const selectedEmp = employees.find(e => e.id === selectedEmpId);
   const isMonthly = selectedEmp?.salaryType === 'monthly' || (Number(selectedEmp?.baseSalary) > 1500 && selectedEmp?.salaryType !== 'daily');
   const baseSalary = selectedEmp ? (Number(selectedEmp.baseSalary) || 0) : 0;
-  const dailyRateEquiv = isMonthly ? (baseSalary > 0 ? Math.round(baseSalary / 30) : 0) : baseSalary;
+  const dailyRateEquiv = isMonthly ? (baseSalary > 0 ? Math.round(baseSalary / daysInMonth) : 0) : baseSalary;
   const fixedEarnings = isMonthly
-    ? (Number(days) === 30 ? baseSalary : Math.round((baseSalary / 30) * (Number(days) || 0)))
+    ? (Number(days) === daysInMonth ? baseSalary : Math.round((baseSalary / daysInMonth) * (Number(days) || 0)))
     : (baseSalary > 0 ? Math.round(baseSalary * (Number(days) || 0)) : 0);
   const lBonusAmount = lBonus ? dailyRateEquiv : 0;
   const totalAdd = (Number(incentive) || 0) + lBonusAmount + (Number(rdAdd) || 0);
@@ -193,6 +219,7 @@ function SalaryProcessor({ userPermissions }) {
       });
 
       // Reset Form
+      setDays(daysInMonth);
       setIncentive(0);
       setLBonus(false);
       setPenalty(0);
@@ -286,14 +313,14 @@ function SalaryProcessor({ userPermissions }) {
                 </span>
               )}
             </div>
-            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>Days Worked</label><input type="number" min="0" max="31" value={days} onChange={e => setDays(e.target.value)} style={input} /></div>
+            <div style={field}><label style={{ color: '#475569', fontWeight: '500' }}>Days Worked</label><input type="number" min="0" max={daysInMonth} value={days} onChange={e => setDays(e.target.value)} style={input} /></div>
             <div style={field}>
               <label style={{ color: '#475569', fontWeight: '500' }}>{isMonthly ? 'Monthly Salary' : 'Daily Rate'}</label>
               <span style={{ color: '#0f172a', fontWeight: '600' }}>₹{baseSalary}{isMonthly ? '/month' : '/day'}</span>
             </div>
             {isMonthly && (
               <div style={field}>
-                <label style={{ color: '#94a3b8' }}>Daily Equivalent (÷30)</label>
+                <label style={{ color: '#94a3b8' }}>Daily Equivalent (÷{daysInMonth})</label>
                 <span style={{ color: '#94a3b8' }}>₹{dailyRateEquiv}/day</span>
               </div>
             )}
