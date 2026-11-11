@@ -1,15 +1,19 @@
 // Telegram Notification Service for Rani Salary
+import { db } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
-const TELEGRAM_CONFIG = {
+export const TELEGRAM_CONFIG = {
   botToken: process.env.REACT_APP_TELEGRAM_BOT_TOKEN || '',
+  botUsername: process.env.REACT_APP_TELEGRAM_BOT_USERNAME || 'Rani_alerts_bot',
+  botUrl: process.env.REACT_APP_TELEGRAM_BOT_URL || 'https://t.me/Rani_alerts_bot',
   devChatId: process.env.REACT_APP_TELEGRAM_DEV_CHAT_ID || '',
-  adminChatId: process.env.REACT_APP_TELEGRAM_ADMIN_CHAT_ID || '' // Can be added later
+  adminChatId: process.env.REACT_APP_TELEGRAM_ADMIN_CHAT_ID || ''
 };
 
 /**
  * Format current timestamp in Indian Standard Time (IST)
  */
-function getISTDateTime() {
+export function getISTDateTime() {
   return new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
     dateStyle: 'medium',
@@ -21,7 +25,7 @@ function getISTDateTime() {
 /**
  * Basic device / browser summary from User Agent
  */
-function getDeviceInfo() {
+export function getDeviceInfo() {
   const ua = navigator.userAgent;
   let browser = 'Unknown Browser';
   if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
@@ -40,7 +44,23 @@ function getDeviceInfo() {
 }
 
 /**
+ * Fetch all enabled custom recipients from Firestore
+ */
+export async function getActiveRecipientsFromFirestore() {
+  try {
+    const snap = await getDocs(collection(db, 'telegram_recipients'));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(r => r.enabled !== false && r.chatId);
+  } catch (err) {
+    console.warn('Could not read telegram_recipients from Firestore:', err);
+    return [];
+  }
+}
+
+/**
  * Core send helper
+ * Sends to targetChatIds if specified, or to all active configured recipients
  */
 export async function sendTelegramMessage(text, targetChatIds = []) {
   const { botToken, devChatId, adminChatId } = TELEGRAM_CONFIG;
@@ -50,16 +70,28 @@ export async function sendTelegramMessage(text, targetChatIds = []) {
   }
 
   // Determine recipients
-  let recipients = targetChatIds;
-  if (!recipients || recipients.length === 0) {
-    recipients = [devChatId];
-    if (adminChatId) recipients.push(adminChatId);
+  let recipients = targetChatIds && targetChatIds.length > 0 ? [...targetChatIds] : [];
+  if (recipients.length === 0) {
+    // Collect active recipients from Firestore
+    try {
+      const customRecipients = await getActiveRecipientsFromFirestore();
+      customRecipients.forEach(r => {
+        if (r.chatId && !recipients.includes(r.chatId)) {
+          recipients.push(r.chatId);
+        }
+      });
+    } catch (e) {
+      console.warn('Error loading custom recipients:', e);
+    }
+
+    if (devChatId && !recipients.includes(devChatId)) recipients.push(devChatId);
+    if (adminChatId && !recipients.includes(adminChatId)) recipients.push(adminChatId);
   }
 
   // Filter valid non-empty IDs
   const validRecipients = recipients.filter(Boolean);
   if (validRecipients.length === 0) {
-    return { ok: false, error: 'No valid recipient Chat IDs' };
+    return { ok: false, error: 'No valid recipient Chat IDs found.' };
   }
 
   const endpoint = `https://api.telegram.org/bot${botToken}/sendMessage`;
@@ -78,10 +110,15 @@ export async function sendTelegramMessage(text, targetChatIds = []) {
           })
         });
         const data = await response.json();
-        return { chatId, success: data.ok, data };
+        return {
+          chatId,
+          success: data.ok,
+          description: data.description || (data.ok ? 'Sent successfully' : 'Failed'),
+          data
+        };
       } catch (err) {
         console.error(`Telegram error for ${chatId}:`, err);
-        return { chatId, success: false, error: err.message };
+        return { chatId, success: false, error: err.message, description: err.message };
       }
     })
   );
@@ -90,7 +127,7 @@ export async function sendTelegramMessage(text, targetChatIds = []) {
 }
 
 /**
- * Send Login Notification to Dev (and Admin when set)
+ * Send Login Notification to all active recipients
  */
 export async function notifyLogin({ email, dept }) {
   // Prevent duplicate notifications in the same active session
@@ -114,17 +151,39 @@ export async function notifyLogin({ email, dept }) {
   ].join('\n');
 
   try {
-    const recipients = [TELEGRAM_CONFIG.devChatId];
-    if (TELEGRAM_CONFIG.adminChatId) {
-      recipients.push(TELEGRAM_CONFIG.adminChatId);
-    }
-    const res = await sendTelegramMessage(message, recipients);
+    const res = await sendTelegramMessage(message);
     if (res.ok) {
       sessionStorage.setItem(sessionKey, 'true');
     }
     return res;
   } catch (e) {
     console.error('Failed to send login notification:', e);
+  }
+}
+
+/**
+ * Send Notification when a Salary Record is processed
+ */
+export async function notifySalaryProcessed({ employeeName, employeeCode, dept, month, year, gTotal, net, processedBy }) {
+  const istTime = getISTDateTime();
+  const codeStr = employeeCode ? ` [${employeeCode}]` : '';
+
+  const message = [
+    `💵 <b>RANI SALARY - SALARY PROCESSED</b>`,
+    ``,
+    `👤 <b>Employee:</b> <b>${employeeName}</b>${codeStr}`,
+    `🏪 <b>Shop:</b> ${dept}`,
+    `📅 <b>Period:</b> ${month} ${year}`,
+    `💰 <b>Gross Earnings:</b> ₹${Number(gTotal || 0).toLocaleString('en-IN')}`,
+    `✅ <b>Net Salary:</b> ₹${Number(net ?? gTotal ?? 0).toLocaleString('en-IN')}`,
+    `🕒 <b>Time:</b> ${istTime} (IST)`,
+    `✍️ <b>Processed By:</b> <code>${processedBy || 'Admin'}</code>`
+  ].join('\n');
+
+  try {
+    return await sendTelegramMessage(message);
+  } catch (err) {
+    console.error('Failed to send salary notification:', err);
   }
 }
 

@@ -4,6 +4,7 @@ import { collection, onSnapshot, addDoc, query, where, getDocs, updateDoc, doc }
 import { Save, CheckCircle, Clock, Archive } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
+import { notifySalaryProcessed } from '../services/telegramService';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -229,6 +230,18 @@ function SalaryProcessor({ userPermissions }) {
       setJBalance(0);
       setSelectedEmpId('');
       showToast(`Salary record for ${selectedEmp.name} saved successfully!`, 'success');
+
+      // Non-blocking Telegram alert to all configured recipients
+      notifySalaryProcessed({
+        employeeName: selectedEmp.name,
+        employeeCode: selectedEmp.employeeId,
+        dept: selectedEmp.dept,
+        month,
+        year,
+        gTotal,
+        net: gTotal,
+        processedBy: selectedEmp.dept
+      });
     } catch (err) {
       showToast("Error saving salary: " + err.message, 'error');
     } finally {
