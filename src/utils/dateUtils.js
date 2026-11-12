@@ -64,3 +64,4 @@ export function parseDateToMonthYear(dateStr) {
   const mName = (mNum >= 1 && mNum <= 12) ? MONTHS[mNum - 1] : '';
   return { monthName: mName, year: y };
 }
+

@@ -1,20 +1,19 @@
 /* eslint-disable no-restricted-globals */
 
 // Service Worker for Rani Salary PWA
-const CACHE_VERSION = 'v1.0.0';
+const CACHE_VERSION = 'v2.0.0';
 const CACHE_NAME = `rani-salary-${CACHE_VERSION}`;
 
-// Pre-cached App Shell Assets
+// Pre-cached App Shell Assets (Excludes index.html to ensure fresh JS chunk hashes)
 const PRECACHE_ASSETS = [
   '/',
-  '/index.html',
   '/manifest.json',
   '/favicon.png',
   '/logo192.png',
   '/logo512.png'
 ];
 
-// Domains / URL patterns that should bypass SW caching (let Firestore/Dexie/APIs manage their own network state)
+// Domains / URL patterns that should bypass SW caching (let Firestore/APIs manage their own network state)
 const BYPASS_URL_PATTERNS = [
   'firestore.googleapis.com',
   'identitytoolkit.googleapis.com',
@@ -39,17 +38,17 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate event: Clean up previous version caches & claim clients
+// Activate event: Clean up previous version caches & claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames
-          .filter((name) => name.startsWith('rani-salary-') && name !== CACHE_NAME)
-          .map((name) => {
-            console.log(`[SW] Deleting obsolete cache: ${name}`);
+        cacheNames.map((name) => {
+          if (name !== CACHE_NAME) {
+            console.log(`[SW] Purging obsolete cache: ${name}`);
             return caches.delete(name);
-          })
+          }
+        })
       );
     }).then(() => self.clients.claim())
   );
@@ -175,16 +174,27 @@ self.addEventListener('fetch', (event) => {
   if (isStaticAsset) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
+        // If cached response was accidentally HTML (e.g. from 404 rewrite), purge it
+        if (cachedResponse) {
+          const cachedType = cachedResponse.headers.get('content-type') || '';
+          if (cachedType.includes('text/html')) {
+            caches.open(CACHE_NAME).then((cache) => cache.delete(request));
+            cachedResponse = null;
+          }
+        }
+
         const fetchPromise = fetch(request)
           .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
+            const contentType = networkResponse ? (networkResponse.headers.get('content-type') || '') : '';
+            // Only cache valid 200 responses that are NOT HTML error rewrites
+            if (networkResponse && networkResponse.status === 200 && !contentType.includes('text/html')) {
               const responseClone = networkResponse.clone();
               caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
             }
             return networkResponse;
           })
           .catch(() => {
-            // Network failure is handled by returning cachedResponse below
+            // Handled by cachedResponse
           });
 
         return cachedResponse || fetchPromise;

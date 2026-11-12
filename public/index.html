@@ -36,6 +36,37 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>Rani Salary</title>
+    <!-- Automatic Cache-Busting & PWA Corrupt Cache Recovery -->
+    <script>
+      (function() {
+        window.addEventListener('error', function(e) {
+          var msg = (e && (e.message || (e.error && e.error.message))) || '';
+          if (
+            msg.indexOf('Unexpected token') !== -1 ||
+            msg.indexOf('Loading chunk') !== -1 ||
+            msg.indexOf('MIME type') !== -1 ||
+            msg.indexOf('SyntaxError') !== -1
+          ) {
+            if (!sessionStorage.getItem('pwa_cache_reset')) {
+              sessionStorage.setItem('pwa_cache_reset', 'true');
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(regs) {
+                  for (var i = 0; i < regs.length; i++) regs[i].unregister();
+                });
+              }
+              if ('caches' in window) {
+                caches.keys().then(function(keys) {
+                  for (var j = 0; j < keys.length; j++) caches.delete(keys[j]);
+                });
+              }
+              setTimeout(function() {
+                window.location.reload(true);
+              }, 150);
+            }
+          }
+        });
+      })();
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
