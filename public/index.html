@@ -36,41 +36,110 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>Rani Salary</title>
-    <!-- Automatic Cache-Busting & PWA Corrupt Cache Recovery -->
+    <!-- Automatic Service Worker Retirement & Cache Clearance -->
     <script>
       (function() {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              for (var i = 0; i < regs.length; i++) regs[i].unregister();
+            });
+          }
+          if ('caches' in window) {
+            caches.keys().then(function(names) {
+              for (var j = 0; j < names.length; j++) caches.delete(names[j]);
+            });
+          }
+        } catch (e) {}
+
+        // Global Error Catcher for pre-React script failures
         window.addEventListener('error', function(e) {
-          var msg = (e && (e.message || (e.error && e.error.message))) || '';
-          if (
-            msg.indexOf('Unexpected token') !== -1 ||
-            msg.indexOf('Loading chunk') !== -1 ||
-            msg.indexOf('MIME type') !== -1 ||
-            msg.indexOf('SyntaxError') !== -1
-          ) {
-            if (!sessionStorage.getItem('pwa_cache_reset')) {
-              sessionStorage.setItem('pwa_cache_reset', 'true');
-              if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(function(regs) {
-                  for (var i = 0; i < regs.length; i++) regs[i].unregister();
-                });
-              }
-              if ('caches' in window) {
-                caches.keys().then(function(keys) {
-                  for (var j = 0; j < keys.length; j++) caches.delete(keys[j]);
-                });
-              }
-              setTimeout(function() {
-                window.location.reload(true);
-              }, 150);
+          showFallbackError((e && e.message) || 'A temporary script loading error occurred.');
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          showFallbackError((e && e.reason && e.reason.message) || 'A network connection promise was interrupted.');
+        });
+
+        function showFallbackError(msg) {
+          var container = document.getElementById('startup-status-container');
+          var errorBox = document.getElementById('startup-error-actions');
+          var title = document.getElementById('startup-title');
+          var desc = document.getElementById('startup-desc');
+          var spinner = document.getElementById('startup-spinner');
+          if (container && errorBox && title && desc) {
+            if (spinner) spinner.style.display = 'none';
+            title.textContent = "We'll be back soon";
+            desc.innerHTML = "A temporary connection glitch occurred while launching the application.<br/>Don't worry, all salary and staff data is safely preserved in the cloud database.";
+            errorBox.style.display = 'flex';
+            var detail = document.getElementById('startup-error-detail');
+            if (detail && msg) {
+              detail.textContent = msg;
+              detail.style.display = 'block';
             }
           }
-        });
+        }
+
+        // Failsafe timeout: If React hasn't replaced #root within 6 seconds, show the recovery actions
+        setTimeout(function() {
+          var container = document.getElementById('startup-status-container');
+          if (container) {
+            showFallbackError('Initial connection took longer than expected.');
+          }
+        }, 6000);
       })();
     </script>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
+    <noscript>
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8fafc;font-family:-apple-system,sans-serif;padding:20px;text-align:center;">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:32px 24px;max-width:440px;box-shadow:0 10px 15px -3px rgba(0,0,0,0.05);">
+          <h2 style="margin:0 0 10px;color:#0f172a;font-size:20px;">JavaScript Required</h2>
+          <p style="margin:0;color:#64748b;font-size:14px;line-height:1.5;">Please enable JavaScript in your browser settings to run Rani Salary.</p>
+        </div>
+      </div>
+    </noscript>
+    <div id="root">
+      <!-- Pre-rendered graceful startup screen (automatically replaced once React mounts) -->
+      <div id="startup-status-container" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8fafc;font-family:'Plus Jakarta Sans','Inter',-apple-system,sans-serif;padding:24px;box-sizing:border-box;">
+        <div style="max-width:460px;width:100%;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:36px 28px;text-align:center;box-shadow:0 20px 25px -5px rgba(0,0,0,0.06),0 8px 10px -6px rgba(0,0,0,0.04);box-sizing:border-box;">
+          
+          <!-- Cloud Status Indicator Pill -->
+          <div style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 12px;border-radius:50px;font-size:12px;font-weight:700;margin-bottom:20px;letter-spacing:0.3px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block;"></span>
+            Cloud Database Secure
+          </div>
+
+          <div id="startup-spinner" style="width:32px;height:32px;border:3px solid #e2e8f0;border-top-color:#0f172a;border-radius:50%;margin:0 auto 18px;animation:startupSpin 0.8s linear infinite;"></div>
+
+          <h2 id="startup-title" style="margin:0 0 10px;font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-0.3px;">
+            Loading Rani Salary…
+          </h2>
+
+          <p id="startup-desc" style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.6;">
+            Connecting to cloud payroll database. Please wait a moment.
+          </p>
+
+          <!-- Recovery actions shown only if startup is delayed or interrupted -->
+          <div id="startup-error-actions" style="display:none;flex-direction:column;gap:10px;margin-top:20px;">
+            <button onclick="window.location.reload(true)" style="background:#0f172a;color:#ffffff;border:none;border-radius:10px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 6px -1px rgba(15,23,42,0.15);">
+              Refresh Application
+            </button>
+            <button onclick="try{localStorage.clear();sessionStorage.clear();}catch(e){}window.location.href='/';" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;">
+              Clear Session & Restart
+            </button>
+            <div id="startup-error-detail" style="display:none;margin-top:10px;padding:10px;background:#0f172a;color:#f87171;font-size:11px;font-family:monospace;border-radius:8px;text-align:left;word-break:break-all;"></div>
+          </div>
+
+          <style>
+            @keyframes startupSpin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
+        </div>
+      </div>
+    </div>
     <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.

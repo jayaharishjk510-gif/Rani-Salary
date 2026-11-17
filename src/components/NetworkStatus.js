@@ -75,7 +75,7 @@ export default function NetworkStatus() {
         >
           <WifiOff size={15} color="#ffffff" />
         </div>
-        <span>Offline Mode &bull; Running from local cache</span>
+        <span>Offline &bull; Internet connection interrupted</span>
         <button
           onClick={() => window.location.reload()}
           style={{

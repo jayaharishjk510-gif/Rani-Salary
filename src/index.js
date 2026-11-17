@@ -20,5 +20,5 @@ root.render(
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
 
-// Register the service worker for Progressive Web App (PWA) offline capabilities
-serviceWorkerRegistration.register();
+// Unregister legacy service workers and clear cache stores to guarantee fresh network loads
+serviceWorkerRegistration.unregister();

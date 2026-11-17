@@ -5,7 +5,6 @@ import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebas
 import { Users, IndianRupee, FileText, LayoutDashboard, LogOut, Menu, ChevronLeft, Search, Download, X, Settings } from 'lucide-react';
 import { notifyLogin } from './services/telegramService';
 import NetworkStatus from './components/NetworkStatus';
-import PWAUpdateToast from './components/PWAUpdateToast';
 import PWAInstallPrompt, { usePWAInstall } from './components/PWAInstallPrompt';
 
 // Import the pages
@@ -119,7 +118,6 @@ function App() {
       <>
         <LoginScreen />
         <NetworkStatus />
-        <PWAUpdateToast />
         <PWAInstallPrompt />
       </>
     );
@@ -419,7 +417,6 @@ function App() {
           </nav>
 
           <NetworkStatus />
-          <PWAUpdateToast />
           <PWAInstallPrompt />
 
           {/* MAIN CONTENT AREA */}
